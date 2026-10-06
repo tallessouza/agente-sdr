@@ -1,6 +1,12 @@
 import asyncio, json, os, sys, time, pathlib, httpx
 import sdr, app
 sdr.DB_PATH = pathlib.Path("/tmp/sim.db")
+# Never the production Hermes: a new SOUL is tried on a test Hermes first.
+TEST_HERMES = os.environ.get("SIM_HERMES_URL", "").rstrip("/")
+if not TEST_HERMES or "hermes_hermes" in TEST_HERMES:
+    sys.exit("SIM_HERMES_URL precisa apontar para o Hermes de teste (ex.: http://hermes_teste_hermes:8642/v1), nunca o de produção")
+app.HERMES_URL = TEST_HERMES
+app.HERMES_KEY = os.environ.get("SIM_HERMES_KEY", app.HERMES_KEY)
 BRAIN = os.environ["SDR_BRAIN_URL"]; TOKEN = os.environ["SDR_BRAIN_TOKEN"]
 LLM = "http://omniroute_omniroute:20129/v1"; KEY = os.environ["SIM_LLM_KEY"]
 MODEL = os.environ.get("SIM_MODEL", "agy/gemini-3.7-flash-high")
@@ -67,6 +73,8 @@ async def main():
             print("\n== escalou para o Talles; fim da simulação ==")
             break
         lead_msg = await persona_reply(transcript)
+    # What the brain would have in lead_steps: SPICED letters and the next step.
+    print("\n== registros ==\n" + json.dumps(sdr.lead_state(conv).get("registros", {}), ensure_ascii=False, indent=1), flush=True)
     json.dump(transcript, open("/tmp/sim_transcript.json", "w"), ensure_ascii=False, indent=1)
 
 asyncio.run(main())

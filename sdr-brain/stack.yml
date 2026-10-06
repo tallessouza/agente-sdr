@@ -5,7 +5,7 @@
 version: "3.8"
 services:
   brain:
-    image: sdr-brain:${SDR_BRAIN_IMAGE_TAG:-v2}
+    image: sdr-brain:${SDR_BRAIN_IMAGE_TAG:-v3}
     environment:
       SDR_BRAIN_TOKEN: ${SDR_BRAIN_TOKEN:?set SDR_BRAIN_TOKEN}
       SDR_BRAIN_DB: /data/sdr-brain.db

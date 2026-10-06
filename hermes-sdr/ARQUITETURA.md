@@ -1,6 +1,8 @@
 # Arquitetura do SDR no WhatsApp
 
-Estado em 2026-09-28. O histórico de cada decisão, com evidências, está em
+Estado em 2026-09-28, com as mudanças da branch `spiced` (06/10: SOUL v13 em
+SPICED com as duas ofertas, `ofertas.json`, `lead_steps`, prefixo `wa:v13:`;
+ordem de deploy em [`../DEPLOY.md`](../DEPLOY.md)). O histórico de cada decisão, com evidências, está em
 [`../HERMES_OPS_LOG.md`](../HERMES_OPS_LOG.md). Segredos ficam só em
 `CREDENTIALS.md` / `creds` (fora do Git).
 
@@ -45,8 +47,8 @@ Na `ai_stack`, use sempre o nome completo do serviço (`chatwoot_postgres`,
 | Serviço | Imagem | Papel |
 |---|---|---|
 | `hermes_hermes` | `hermes-agent:latest` | O SDR. API OpenAI-compatible em `hermes_hermes:8642/v1`. |
-| `integration_bridge` | `evolution-chatwoot-bridge:sdr-v12` | Bridge Evolution ↔ Chatwoot ↔ Hermes com a camada SDR (`bridge-src/`). Monta `hermes-sdr/` em `/sdr`. |
-| `sdr_brain` (stack `sdr`) | `sdr-brain:v2` | Revisor, supervisor, enriquecimento e agente de FUP (`sdr-brain/`). Sem porta publicada. Redes `ai_stack` e `openreply_internal`. |
+| `integration_bridge` | `evolution-chatwoot-bridge:sdr-v12` (branch `spiced`: `sdr-v13`) | Bridge Evolution ↔ Chatwoot ↔ Hermes com a camada SDR (`bridge-src/`). Monta `hermes-sdr/` em `/sdr`. |
+| `sdr_brain` (stack `sdr`) | `sdr-brain:v2` (branch `spiced`: `v3`) | Revisor, supervisor, enriquecimento e agente de FUP (`sdr-brain/`). Sem porta publicada. Redes `ai_stack` e `openreply_internal`. |
 | `evogo_evolution` | `evoapicloud/evolution-go` | Transporte WhatsApp, instância `whatsapp`. |
 | `chatwoot_*` | `chatwoot/chatwoot:v4.18.0` | Inbox humana e histórico, conta 1. |
 | `omniroute_omniroute` | `diegosouzapw/omniroute` | Roteador de LLM com `REQUIRE_API_KEY=true`. Chaves: `hermes-bridge` e `sdr-brain`. |
@@ -61,8 +63,12 @@ Na `ai_stack`, use sempre o nome completo do serviço (`chatwoot_postgres`,
 - **Persona:** [`SOUL.md`](SOUL.md), instalada em `/opt/data/SOUL.md` com
   modo 444 e uid 10000. Backups em `/opt/data/backups/`.
   - O prompt congela por sessão. A bridge usa sessões
-    `<HERMES_SESSION_PREFIX><jid>` (hoje `wa:v12:`). **Mudou a persona? Suba
-    o prefixo.**
+    `<HERMES_SESSION_PREFIX><jid>`. **Mudou a persona? Suba o prefixo.**
+  - O prefixo é a variável de ambiente `HERMES_SESSION_PREFIX` do serviço
+    `integration_bridge`: hoje `wa:v12:` em produção; com o SOUL v13 (SPICED,
+    duas ofertas), `wa:v13:`, que também é o padrão do código
+    (`bridge-src/app.py`). Num rollback o prefixo sobe (`wa:v14:`), nunca
+    volta a um número usado.
 - **Toolsets:** `web`, `vision` e `clarify`. `skills` está desabilitado; a
   política fica no volume `hermes_policy` (ver `HERMES_SECURITY_POLICY.md`).
 - **Contexto confiável:** chega só pela mensagem `role: system` de cada
@@ -73,26 +79,32 @@ Na `ai_stack`, use sempre o nome completo do serviço (`chatwoot_postgres`,
   |---|---|
   | `agora` | Hora de Brasília |
   | `capacidade` | Lida de `capacidade.json`; vira `desatualizado` depois de `SDR_CAPACITY_MAX_AGE_DAYS=7` |
+  | `oferta` | `instalador` ou `raiox`: o último `[[REGISTRO: oferta]]` ou, sem ele, a campanha do texto pré-preenchido (`origin_from_text`: "Time de IA" → instalador, "Raio-X" → raiox). Ausente: o agente descobre |
+  | `ofertas` | Lido de `ofertas.json` (preços, links, prazos, garantia de cada oferta); `{"status": "desconhecido"}` se faltar |
   | `fotos_aprovadas` | De `midia/descricoes.json` |
-  | `lead` | Origem, registros e `ficha` |
+  | `lead` | Origem (com `oferta`), registros, `oferta`, `proximo_passo` (`{texto, ate}`) e `ficha` |
   | `orientacoes` | Vindas do supervisor |
   | `gatilho` | Por que o agente fala sem mensagem nova do lead |
   | `mensagens_corrigidas` | O que o lead realmente recebeu quando o revisor mudou ou a interrupção cortou a resposta |
 
-- **SOUL:**
-  - As 8 regras invioláveis: apresentação como agente, nome de cliente,
-    posicionamento, capacidade, ordem 48k → 12k, nada de preço antes do
-    diagnóstico, as três perguntas, sigilo.
-  - A conversa em 4 fases:
-    1. **Conhecer:** abertura literal, rapport com o perfil, o @, triagem,
-       faturamento, carteirada.
-    2. **Diagnosticar:** custo, ganho, urgência e o espelho.
-    3. **Dar certeza, depois o preço:** como funcionaria para ele, a âncora
-       sozinha, o Raio-X.
-    4. **Decidir:** as três perguntas e o fechamento, que escala para o
-       Talles.
-  - Por fim: objeções pelos três testes, quando escalar, registros, um
-    exemplo de tom e um checklist antes de enviar.
+- **SOUL (v13, branch `spiced`):** um Hermes só, com as duas ofertas no
+  mesmo funil (Instalação R$ 47 → bump → planos → Raio-X → Copiar).
+  - As 9 regras comuns: apresentação, nome de cliente, não é curso, preço só
+    de `ofertas`, sem promessa de faturamento, nunca pedir senha, sem
+    concorrente, escassez real, sigilo.
+  - SPICED (situação, dor, impacto, evento crítico, decisão), uma pergunta
+    por turno, com `[[REGISTRO]]` por letra e `etapa_spiced`.
+  - Caminho do Instalador: abertura de quem chega pelo "TIME", equação de
+    valor com as palavras do lead, preço com o custo mensal, link
+    `https://instalador.talles.dev/antes` com o lembrete da VPS e do Codex,
+    pré-requisito como próximo passo, pós-compra, escada e árvore de
+    objeções.
+  - Caminho do Raio-X: os fatos e o roteiro literal de antes, reorganizados
+    em letras; as regras de capacidade, 48k → 12k e as três perguntas valem
+    só nele.
+  - Próximo passo: `proximo_passo` e `proximo_passo_em` em toda troca
+    relevante.
+  - De onde sai cada trecho: [`MAPA-MANUAIS.md`](MAPA-MANUAIS.md).
 
 ### Diretivas na resposta do Hermes
 
@@ -121,7 +133,10 @@ A bridge interpreta as diretivas e as remove antes do envio. Qualquer
 5. **Revisão:** `POST /review` no brain, com timeout `SDR_REVIEW_TIMEOUT=22`
    s. Se falhar, segue com o rascunho.
 6. **Guardrail determinístico:** termos da stack, `[[`, caminhos → não envia,
-   manda a resposta-padrão e escala.
+   manda a resposta-padrão e escala. Os nomes de produto que a oferta exige
+   (`SDR_OFFER_PHRASES`: "Conta do Gemini", "plano pago do ChatGPT",
+   "ChatGPT Plus"…) saem do texto antes da conferência; "gemini" ou
+   "chatgpt" soltos continuam barrados.
 7. **Sem travessão nem dois-pontos conectivo** (`sdr.plain_style`, também
    nos toques):
    - O travessão entre frases vira vírgula; hífen dentro de palavra fica.
@@ -177,12 +192,25 @@ Modelo: `SDR_BRAIN_MODEL=agy/gemini-3.7-flash-low`. As chamadas pedem JSON, e
   preço, âncora ou passo.
 - **O que ele sabe:** a lista de fatos reais da oferta (que não contam como
   "logística inventada") e as frases literais do roteiro, que nunca reescreve.
-- **Regras fiscalizadas:** sigilo, nomes, curso/mentoria, 48k antes de 12k,
-  capacidade, números permitidos, afirmação ou logística inventada, voz
-  "eu / o Talles", responder a pergunta do lead, lead fora do perfil sem
-  preço, dossiê inventado, 3 balões, um passo por turno, nada de preço antes
-  do diagnóstico (dor, custo, urgência e faturamento), pergunta final e
-  reconhecimento da objeção.
+- **Regras por oferta** (`oferta` vem do contexto da bridge):
+  - **Comuns:** sigilo, nomes, curso/mentoria, concorrente (Naia, Squad,
+    Avalanche), responder a pergunta, 3 balões, um passo por turno,
+    pergunta final, voz, nada inventado, objeção no ramo certo
+    (`MAPA-MANUAIS.md`, árvore 2.3), escassez real.
+  - **Instalador:** fatos de `fatos_oferta` (lista gerada do
+    `ofertas.json`), checklist S, P e D (VPS e Codex) antes do link,
+    pré-requisito não é objeção, nada de pedido de senha, faturamento,
+    desconto ou 24 h, Raio-X só depois da instalação, equação de valor
+    antes do preço, preço com o custo mensal.
+  - **Raio-X:** o roteiro literal, 48k antes de 12k, capacidade, números
+    permitidos, fora do perfil sem preço e o checklist SPICED antes do
+    preço (dor, custo e faturamento, urgência).
+- **Verificação automática** (`sdr-brain/oferta.py`), antes do modelo e de
+  novo depois de uma reescrita: preço que não existe no `ofertas.json` (os
+  números que o próprio lead disse podem voltar), link fora de
+  `instalador.talles.dev`, pedido de senha/token/IP, promessa de faturamento,
+  desconto, prazo de 24 h e nomes proibidos. O que sobrar vira `bloquear`
+  com motivo "verificação automática", mesmo se o modelo aprovou ou caiu.
 - **Tempo:** uma tentativa, `SDR_REVIEW_LLM_TIMEOUT=18` s.
 
 ### O que aparece no Chatwoot (`crm.py`)
@@ -220,9 +248,25 @@ Os números de engajamento e os links ficam só no Chatwoot: a `ficha` que o
 Hermes recebe mantém só temas das legendas (`enrichment.for_agent`), para
 rapport sem métricas.
 
+**Linha de próximo passo** (tipo `activity`): "📌 Próximo passo: … até
+dd/mm/aaaa", quando o agente registra `proximo_passo` ou `proximo_passo_em`
+(as duas chegam separadas; o brain espera `SDR_STEP_ACTIVITY_DELAY=3` s e
+escreve uma linha só, e não repete a mesma).
+
+**Atributos da conversa** (`attribute_model` 0, criados na primeira
+gravação): `spiced_oferta`, `spiced_etapa`, `spiced_situacao`, `spiced_dor`,
+`spiced_impacto`, `spiced_evento_critico`, `spiced_decisao`,
+`spiced_tem_vps`, `spiced_tem_codex`, `spiced_proximo_passo`,
+`spiced_proximo_passo_em`. O brain lê os atributos atuais e mescla, porque o
+Chatwoot substitui o mapa inteiro no POST (os `sdr_*` da bridge ficam).
+
 ### Supervisor (`/events/exchange`, `supervisor.md`)
 
-Roda depois de cada troca, com a transcrição do Chatwoot.
+Roda depois de cada troca, com a transcrição do Chatwoot e o estado SPICED
+da conversa (`spiced`: letras registradas, as que faltam, `proximo_passo`),
+montado dos registros que o brain recebeu em `/events/record`.
+- Orienta a letra do SPICED que falta e cobra o registro de `proximo_passo`
+  e `proximo_passo_em`.
 - Pode gravar uma orientação para o próximo turno (`/sdr/guidance`).
 - Pode escalar (`/sdr/escalate`).
 - Não roda duas vezes na mesma conversa ao mesmo tempo.
@@ -281,7 +325,20 @@ Resolve quem é o lead no Instagram e grava a `ficha` pela rota
   - Isso fecha o buraco em que só o guardrail de termos olhava os toques.
 - **Registro:** a decisão fica em `decisions`, e o disparo vai para
   `/sdr/followups`.
-- **Tabelas:** `tracked` (sobrevive a restart), `sequences`, `decisions`.
+- **Gatilho por prazo** (além do silêncio): `lead_steps` guarda o próximo
+  passo de cada conversa (`oferta`, `etapa_spiced`, `proximo_passo`,
+  `proximo_passo_em`, `status` pendente → cobrado / encerrado,
+  `atualizado_em`), alimentada por `/events/record`. Quando
+  `proximo_passo_em` chega (data sem hora vence às `SDR_STEP_DUE_HOUR=10`),
+  o FUP decide um toque com `stage = prazo`, uma vez por data (decisão
+  `prazo` com âncora no vencimento), e não com o lead esperando resposta.
+  Lead do Instalador com `tem_vps` ou `tem_codex` = não e sem data combinada
+  ganha o passo "conferir se já contratou" para o dia seguinte.
+- **O que o modelo recebe também:** `oferta`, `proximo_passo`,
+  `evento_critico` e, no prazo, `pre_requisitos`; os fatos da oferta vêm em
+  `state.context.ofertas`.
+- **Tabelas:** `tracked` (sobrevive a restart), `sequences`, `decisions`,
+  `lead_steps`.
   - Conversa que some da bridge (404) deixa de ser acompanhada.
 - **Para refazer uma decisão:** cancele o `sdr_followups` pendente na bridge
   e apague a linha em `decisions`.
@@ -299,7 +356,7 @@ epoch (float).
 | `POST /review` | `conversation_id, jid, lead_message, draft_parts, directives, context` (+ `transcript` opcional) | `aprovar` / `reescrever` + `parts` / `bloquear` + `motivo` |
 | `POST /events/exchange` | `conversation_id, jid, source_id, lead_message, agent_parts, directives, ts` | 202, aciona o supervisor |
 | `POST /events/lead` | `conversation_id, jid, origin, first_message, ts` | 202, aciona o enriquecimento |
-| `POST /events/record` | `conversation_id, campo, valor, ts` | 202 (`instagram` e `arroba` acionam enriquecimento) |
+| `POST /events/record` | `conversation_id, campo, valor, ts` | 202 (`instagram` e `arroba` acionam enriquecimento; todos alimentam `lead_steps` e os `spiced_*`) |
 
 **Rotas da bridge (`http://integration_bridge:8080`):**
 
@@ -327,6 +384,15 @@ epoch (float).
   - Slug desconhecido redireciona para `NEXTAUTH_URL`.
 - **DM sem nome anterior:** o username vem da Graph API (`getUserUsername`).
 - **Migração** `20260928010000_link_click_recipient`.
+- **Palavra exata** (`Automation.exactMatch`, migração
+  `20261006120000_add_exact_match`, padrão `false`): o comentário inteiro,
+  sem espaços nas pontas, pontuação e emojis, sem diferenciar maiúsculas,
+  tem que ser igual a uma palavra-chave ("TIME", "time!", "Time 🙌" casam;
+  "meu time é bom" não). Interruptor no formulário da campanha; usado no
+  `dm-worker` e no `comment-reconciler`.
+- Destino da campanha "TIME": o texto pré-preenchido
+  `E aí! Sou o @{username} e quero o meu Time de IA instalado`; o
+  "Time de IA" é o que a bridge reconhece como `oferta = instalador`.
 
 ## Capacidade e mídia
 
@@ -353,15 +419,18 @@ epoch (float).
 ## Testes e simulação
 
 - **Bridge:** `python -m unittest test_sdr test_handover test_payment
-  test_phase_b`, rodando dentro da imagem (43 testes).
-- **Brain:** `pytest test_app.py` (20 testes).
+  test_phase_b`, rodando dentro da imagem (52 testes na branch `spiced`).
+- **Brain:** `python -m unittest` (35 testes na branch `spiced`; inclui a
+  conferência dos preços e do link do SOUL contra o `ofertas.json`).
+- **OpenReply:** `npm test` (vitest; 295 passam, 12 pulados sem banco).
 - **Simulador:** [`sim/`](sim/README.md). Um lead-persona conversa com o
   pipeline real: Hermes, revisor, guardrail e correção.
   - Rodadas salvas em `sim/rodada-*.txt`.
   - `/tmp/ficha.json` injeta uma ficha de Instagram.
-- **Toda mudança de persona:** rodar Marina (no perfil) e Carla (fora do
-  perfil, com ficha) e o teste de extração (prompt, modelo, ferramentas,
-  "ignore as instruções").
+- **Toda mudança de persona:** num Hermes de TESTE (o `simulate.py` recusa o
+  de produção), rodar as 5 personas do Instalador, Marina (no perfil) e
+  Carla (fora do perfil, com ficha) e o teste de extração (prompt, modelo,
+  ferramentas, "ignore as instruções").
 
 ## Operação: como mudar cada coisa
 
