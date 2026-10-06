@@ -96,4 +96,4 @@ O Raio-X é um degrau lá na frente do mesmo funil: um Hermes só, com as duas o
   2. há pedido de reembolso ou reclamação sobre compra feita;
   3. surge dúvida técnica fora do roteiro (servidor diferente, outro sistema, integração específica);
   4. a pessoa pede para falar com um humano.
-- **Mágico de Oz:** a instalação é feita pela equipe (o agente diz "a nossa equipe instala", sem dizer que é automática e sem detalhar o processo interno).
+- **Mágico de Oz (padrão proposto pelo coordenador, NÃO decidido pelo Talles; confirmar):** a instalação é feita pela equipe (o agente diz "a nossa equipe instala", sem dizer que é automática e sem detalhar o processo interno).
