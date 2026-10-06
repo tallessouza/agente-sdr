@@ -91,6 +91,11 @@ class GuardrailTests(unittest.TestCase):
         self.assertEqual(sdr.leaked_terms(["Eu rodo no Gemini da Google"]), ["gemini"])
         self.assertEqual(sdr.leaked_terms(["Sou um ChatGPT treinado"]), ["chatgpt"])
 
+    def test_installer_script_of_the_soul_passes_the_guardrail(self):
+        soul = (Path(__file__).resolve().parent.parent / "hermes-sdr" / "SOUL.md").read_text(encoding="utf-8")
+        installer = soul.split("═══ CAMINHO DO INSTALADOR ═══")[1].split("═══ CAMINHO DO RAIO-X ═══")[0]
+        self.assertEqual(sdr.leaked_terms([installer]), [])
+
     def test_normal_sales_text_passes(self):
         text = ["Entendo totalmente. A implantação é R$ 48.000, 21 dias. A evolução do seu time aparece no dia 3, faz sentido?"]
         self.assertEqual(sdr.leaked_terms(text), [])

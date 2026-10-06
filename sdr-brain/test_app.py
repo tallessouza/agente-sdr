@@ -370,6 +370,30 @@ class OfferRules(unittest.TestCase):
         self.assertNotIn("D:tem_vps", app.oferta.spiced_state({}, "raiox")["faltando"])
 
 
+class PromptsMatchTheOffer(unittest.TestCase):
+    """The prompts quote the offer; ofertas.json is the source. They must not drift."""
+    ROOT = Path(__file__).resolve().parent.parent
+
+    def test_installer_section_of_the_soul_only_quotes_real_prices(self):
+        soul = (self.ROOT / "hermes-sdr" / "SOUL.md").read_text(encoding="utf-8")
+        installer = soul.split("═══ CAMINHO DO INSTALADOR ═══")[1].split("═══ CAMINHO DO RAIO-X ═══")[0]
+        allowed = app.oferta.offer_amounts(OFERTAS, "instalador")
+        self.assertEqual(app.oferta.amounts(installer) - allowed, set())
+        self.assertIn(OFERTAS["instalador"]["link_compra"], installer)
+        for forbidden in ("24 h", "desconto", "Naia"):
+            self.assertNotIn(forbidden, installer)
+        # The agent's own example lines pass the deterministic check.
+        self.assertEqual(app.oferta.check([installer], INSTALADOR, []), [])
+
+    def test_prompts_carry_the_offer_rules(self):
+        revisor = app.prompt("revisor.md")
+        self.assertIn("valem só com `oferta` = raiox", revisor)
+        self.assertIn("ROTEIRO LITERAL (só no Raio-X)", revisor)
+        self.assertIn("verificacao_automatica", revisor)
+        self.assertIn("proximo_passo", app.prompt("supervisor.md"))
+        self.assertIn("`stage` = prazo", app.prompt("fup.md"))
+
+
 class OfferReview(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app.app)
