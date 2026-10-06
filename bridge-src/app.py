@@ -42,7 +42,8 @@ HERMES_URL = os.getenv("HERMES_URL", "http://hermes:8642/v1").rstrip("/")
 HERMES_KEY = os.getenv("HERMES_API_KEY", "")
 HERMES_MODEL = os.getenv("HERMES_MODEL", "hermes-agent")
 # Hermes freezes the system prompt per session: bump the prefix to roll out a new persona.
-HERMES_SESSION_PREFIX = os.getenv("HERMES_SESSION_PREFIX", "wa:v2:")
+# v13 = SOUL with SPICED and the two offers (06/10/2026). The service env wins over this default.
+HERMES_SESSION_PREFIX = os.getenv("HERMES_SESSION_PREFIX", "wa:v13:")
 # Follow-up sending window (local hours, end exclusive); 0-24 sends around the clock.
 SDR_BUSINESS_START_HOUR = int(os.getenv("SDR_BUSINESS_START_HOUR", "9"))
 SDR_BUSINESS_END_HOUR = int(os.getenv("SDR_BUSINESS_END_HOUR", "20"))
@@ -870,6 +871,15 @@ async def brain_event(path: str, payload: dict[str, Any]) -> None:
             await client.post(SDR_BRAIN_URL + path, headers={"Authorization": f"Bearer {SDR_BRAIN_TOKEN}"}, json=payload)
     except Exception: logger.debug("SDR event failed", exc_info=True)
 
+async def record_offer_from_origin(conversation_id: int, origin: dict[str, Any] | None) -> None:
+    """The campaign text names the offer: record it like a [[REGISTRO: oferta = ...]]."""
+    offer = (origin or {}).get("oferta")
+    if offer not in sdr.OFFERS:
+        return
+    await sdr.record(conversation_id, "oferta", offer)
+    fire_and_forget(brain_event("/events/record", {"conversation_id": conversation_id, "campo": "oferta", "valor": offer, "ts": time.time()}))
+
+
 async def review_reply(jid: str, conversation_id: int, last_message: str, parts: list[str], directives: list[dict[str, Any]]) -> tuple[list[str], list[dict[str, Any]]]:
     if not SDR_BRAIN_URL: return parts, directives
     try:
@@ -1000,7 +1010,10 @@ async def hermes_batch_worker(jid: str) -> None:
                     first = sdr.remember_lead(conversation_id, jid, combined)
                     sdr.touch_activity(conversation_id, lead=True)
                     sdr.cancel_followups(conversation_id, "lead_message")
-                    if first: fire_and_forget(brain_event("/events/lead", {"conversation_id":conversation_id,"jid":jid,"origin":sdr.lead_state(conversation_id).get("origem"),"first_message":combined,"ts":time.time()}))
+                    if first:
+                        origin = sdr.lead_state(conversation_id).get("origem")
+                        await record_offer_from_origin(conversation_id, origin)
+                        fire_and_forget(brain_event("/events/lead", {"conversation_id":conversation_id,"jid":jid,"origin":origin,"first_message":combined,"ts":time.time()}))
                     guidance = sdr.pending_guidance(conversation_id)
                     reply = await ask_hermes(prompt, HERMES_SESSION_PREFIX + jid + sdr.session_suffix(jid), media, structured_events, sdr.trusted_context(conversation_id, guidance))
                     if await handover.paused(conversation_id) or version != handover.revision(conversation_id):

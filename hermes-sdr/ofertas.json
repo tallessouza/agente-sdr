@@ -1,0 +1,61 @@
+{
+  "fonte": "OFERTA-ATUAL.md de 06/10/2026 (a seção 9 vence) para o instalador; SOUL v12 para o raiox",
+  "atualizado_em": "2026-10-06T18:40:00-03:00",
+  "instalador": {
+    "nome": "Instalação do Time de IA",
+    "preco": "R$ 47",
+    "cobranca": "pagamento único",
+    "link_compra": "https://instalador.talles.dev/antes",
+    "o_que_o_link_faz": "a página confere os pré-requisitos e só libera o checkout com os 2 checks",
+    "pre_requisitos": {
+      "vps": "VPS com Ubuntu e 8 GB de RAM, referência Hostinger KVM2, cerca de R$ 119/mês, paga direto à empresa da VPS. Com 4 GB roda só o básico e mais 1 módulo. Obrigatória para todos.",
+      "ia": "assinatura do Codex (plano pago do ChatGPT, Plus ou maior; conta grátis não funciona; referência R$ 100/mês) OU a Conta do Gemini comprada como bump na compra da instalação, que substitui o Codex só nesse caso"
+    },
+    "prazo": "até 48 h depois do formulário completo, por ordem de chegada; pode sair antes, sem prometer",
+    "capacidade_por_dia": 15,
+    "capacidade_regra": "15 instalações por dia; a 16ª fica para o dia seguinte",
+    "garantia": "Pronto em 48 h: se o time não avisar \"Pronto.\" em até 48 h depois do formulário completo e correto, a instalação continua até ficar pronta; se não ficar, devolve o valor da instalação. Cobre só a instalação. Valem ainda os 7 dias de arrependimento do CDC. Pede-se pelo botão em /app/garantia, com reembolso em até 48 h.",
+    "depois_da_compra": [
+      "entra na área do cliente com o mesmo e-mail da compra e um código de 6 números",
+      "preenche o formulário de 5 campos (IP, usuário, senha, token do bot, ID do Telegram), cifrado no envio, mais o check do Codex e até 3 objetivos",
+      "autoriza o Codex por link e código na conta dele (quem levou a Conta do Gemini autoriza pelo OAuth do Gemini)",
+      "o time avisa \"Pronto.\" no Telegram dele em até 48 h depois do formulário completo",
+      "o time faz 15 perguntas e, no dia seguinte, manda a primeira Pauta do dia",
+      "a área avisa para trocar a senha do servidor"
+    ],
+    "bumps": [
+      {"nome": "Conta do Gemini", "preco": "R$ 100", "cobranca": "única", "onde": "bump do checkout", "nota": "enquanto disponível; substitui o Codex"},
+      {"nome": "Time de agentes", "preco": null, "disponivel": false, "nota": "ainda não existe; não oferecer nem citar preço"}
+    ],
+    "planos": [
+      {"nome": "Gestão do time", "precos": ["quinzenal R$ 150/mês", "semanal R$ 450/mês", "diário R$ 1.300/mês"], "onde": "página depois do checkout", "e": "sugestões do que melhorar e automatizar", "nao_e": "não mexe no que foi instalado; quem executa é o cliente"},
+      {"nome": "Monitoramento", "preco": "R$ 150/mês", "onde": "página para quem recusa a Gestão", "e": "vigia de 5 em 5 min, alerta no Telegram, resumo mensal", "nao_e": "conserto não incluso"}
+    ],
+    "upsells": [
+      {"nome": "Atendimento no WhatsApp", "preco": "R$ 3.000", "cobranca": "única", "e": "configurado no número dele; responde, qualifica e passa o lead"}
+    ],
+    "degraus_acima": [
+      {"nome": "Raio-X da Operação", "preco": "R$ 12.000", "quando": "só para quem já tem a instalação (ou chegou pelo Raio-X) e tem negócio com equipe e faturamento para isso; o agente passa para o Talles"},
+      {"nome": "Copiar a minha operação", "preco": "R$ 48.000", "quando": "depois do Raio-X, com o valor do Raio-X abatido; o agente passa para o Talles"}
+    ],
+    "regras": [
+      "planos são independentes; cancelou, a instalação continua na VPS dele",
+      "não revende servidor nem assinatura",
+      "não é curso; quem quer aprender vai para outro caminho",
+      "senha, token e IP só pelo formulário cifrado, nunca na conversa",
+      "sem desconto, sem promessa de faturamento, sem contador ou escassez falsos",
+      "hoje não há vídeos nem prova de instalação para mostrar"
+    ]
+  },
+  "raiox": {
+    "nome": "Raio-X de Operação",
+    "preco": "R$ 12.000",
+    "cobranca": "à vista, único, sem desconto",
+    "ancora": "implantação R$ 48.000, 21 dias, 3 a 5 fluxos (dita antes do Raio-X)",
+    "duracao": "7 dias corridos",
+    "vagas": "as de capacidade.json (vagas_restantes)",
+    "garantia": "no dia 7, critério assinado no dia 1 não cumprido = devolução integral",
+    "depois": ["implantação R$ 48.000 (os R$ 12.000 abatem inteiros)", "sustentação R$ 7.000/mês até 3 fluxos, R$ 9.000 acima"],
+    "fechamento": "contrato e pagamento são do Talles; o agente escala"
+  }
+}

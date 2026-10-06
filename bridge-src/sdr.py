@@ -36,6 +36,10 @@ DB_PATH = Path(os.getenv("BRIDGE_DB", "/data/bridge.db"))
 SDR_DIR = Path(os.getenv("SDR_DIR", "/sdr"))
 CAPACITY_FILE = Path(os.getenv("SDR_CAPACITY_FILE", str(SDR_DIR / "capacidade.json")))
 CAPACITY_MAX_AGE_DAYS = int(os.getenv("SDR_CAPACITY_MAX_AGE_DAYS", "7"))
+# Prices, links and rules of each offer, edited by hand like capacidade.json, so
+# a price changes without touching any prompt (read by Hermes, reviewer and FUP).
+OFFERS_FILE = Path(os.getenv("SDR_OFFERS_FILE", str(SDR_DIR / "ofertas.json")))
+OFFERS = ("instalador", "raiox")
 MEDIA_DIR = Path(os.getenv("SDR_MEDIA_DIR", str(SDR_DIR / "midia")))
 MEDIA_MAX_BYTES = int(os.getenv("SDR_MEDIA_MAX_BYTES", str(5 * 1024 * 1024)))
 NOTIFY_NUMBER = re.sub(r"\D", "", os.getenv("SDR_NOTIFY_NUMBER", ""))
@@ -66,6 +70,16 @@ LEAK_TERMS = [
         "hermes,nous research,nousresearch,omniroute,antigravity,gemini,openai,chatgpt,gpt-,claude,anthropic,"
         "chatwoot,evolution api,evolution go,evogo,openreply,portainer,traefik,docker,system prompt,"
         "soul.md,/opt/,evento_estruturado,x-hermes,api_server,skill_view,skills_list,skill_manage",
+    ).split(",") if t.strip()
+]
+# Product names the offer itself requires the agent to say (the lead's own AI
+# subscription). Removed before the leak check so "a Conta do Gemini" or "o
+# plano pago do ChatGPT" can be said, while "eu rodo no Gemini" is still caught.
+OFFER_PHRASES = [
+    t.strip() for t in os.getenv(
+        "SDR_OFFER_PHRASES",
+        "conta do gemini,oauth do gemini,assinatura do gemini,plano pago do chatgpt,plano do chatgpt,"
+        "assinatura do chatgpt,conta do chatgpt,chatgpt plus",
     ).split(",") if t.strip()
 ]
 FALLBACK_REPLY = os.getenv(
@@ -131,6 +145,8 @@ def _fold(text: str) -> str:
 def leaked_terms(parts: list[str]) -> list[str]:
     """Deterministic guardrail: internal names that must never reach the lead."""
     folded = _fold("\n".join(parts))
+    for phrase in OFFER_PHRASES:
+        folded = folded.replace(_fold(phrase), " ")
     hits = []
     for term in LEAK_TERMS:
         t = _fold(term)
@@ -248,6 +264,29 @@ def capacity() -> dict[str, Any]:
         return {"status": "desconhecido"}
 
 
+def offers() -> dict[str, Any]:
+    """Offer facts as edited by the owner; a missing or broken file reads as unknown."""
+    try:
+        data = json.loads(OFFERS_FILE.read_text(encoding="utf-8"))
+        return {key: data[key] for key in OFFERS if isinstance(data.get(key), dict)} or {"status": "desconhecido"}
+    except (OSError, ValueError, AttributeError):
+        return {"status": "desconhecido"}
+
+
+def offer_from_text(text: str) -> str | None:
+    """Which campaign the prefilled wa.me text came from.
+
+    "...Sou o @x e quero o meu Time de IA instalado" is the installer campaign
+    (the "TIME" comment); "...quero saber mais sobre o Raio-X" is the Raio-X one.
+    """
+    folded = _fold(text or "")
+    if re.search(r"\btime de ia\b", folded):
+        return "instalador"
+    if re.search(r"\braio[\s-]?x\b", folded):
+        return "raiox"
+    return None
+
+
 def origin_from_text(text: str) -> dict[str, Any] | None:
     """Parse the prefilled wa.me text sent by the Instagram DM ('Sou @user [R3]')."""
     handle = HANDLE_RE.search(text or "")
@@ -259,6 +298,9 @@ def origin_from_text(text: str) -> dict[str, Any] | None:
         origin["peca"] = tag.group(1).upper()
     if origin:
         origin["canal"] = "instagram"
+    offer = offer_from_text(text)
+    if offer:
+        origin["oferta"] = offer
     return origin or None
 
 
@@ -269,6 +311,15 @@ def remember_lead(conversation: int, jid: str, first_text: str) -> bool:
     if inserted:
         logger.info("SDR lead conversation=%s origin=%s", conversation, origin)
     return bool(inserted)
+
+
+def lead_offer(state: dict[str, Any]) -> str | None:
+    """The offer of this conversation: what the agent recorded, else the campaign."""
+    recorded = str((state.get("registros") or {}).get("oferta") or "").strip().lower()
+    if recorded in OFFERS:
+        return recorded
+    origin = (state.get("origem") or {}).get("oferta")
+    return origin if origin in OFFERS else None
 
 
 def lead_state(conversation: int) -> dict[str, Any]:
@@ -284,6 +335,13 @@ def lead_state(conversation: int) -> dict[str, Any]:
         except (ValueError, TypeError): state["ficha"] = {}
     if records:
         state["registros"] = {field: value for field, value in records}
+    offer = lead_offer(state)
+    if offer:
+        state["oferta"] = offer
+    registros = state.get("registros") or {}
+    if registros.get("proximo_passo") or registros.get("proximo_passo_em"):
+        # The step the agent committed to, so every turn (and the FUP) starts from it.
+        state["proximo_passo"] = {"texto": registros.get("proximo_passo", ""), "ate": registros.get("proximo_passo_em", "")}
     return state
 
 def touch_activity(conversation: int, *, lead: bool = False, agent: bool = False, ts: float | None = None) -> None:
@@ -349,12 +407,17 @@ def context_payload(conversation: int) -> dict[str, Any]:
     """Trusted facts for this turn, shared by the Hermes prompt and the reviewer."""
     now = datetime.now(BUSINESS_TZ)
     weekdays = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
-    return {
+    lead = lead_state(conversation)
+    payload = {
         "agora": f"{now:%Y-%m-%d %H:%M} ({weekdays[now.weekday()]})",
         "capacidade": capacity(),
+        "ofertas": offers(),
         "fotos_aprovadas": media_catalog(),
-        "lead": lead_state(conversation),
+        "lead": lead,
     }
+    if lead.get("oferta"):
+        payload["oferta"] = lead["oferta"]
+    return payload
 
 
 def trusted_context(conversation: int, guidance: list[tuple[int, str]] | None = None, trigger: str = "") -> str:

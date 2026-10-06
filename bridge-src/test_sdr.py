@@ -1,3 +1,4 @@
+import asyncio
 import json
 import tempfile
 import unittest
@@ -82,6 +83,14 @@ class GuardrailTests(unittest.TestCase):
         self.assertEqual(sdr.leaked_terms(["Eu rodo no Hermes com Gêmini? não, gemini"]), ["hermes", "gemini"])
         self.assertEqual(sdr.leaked_terms(["arquivo em /opt/data/x"]), ["/opt/"])
 
+    def test_offer_prerequisites_are_not_leaks(self):
+        allowed = ["Sem Codex? Dá pra levar a Conta do Gemini junto na compra.",
+                   "O Codex vem no plano pago do ChatGPT, Plus ou maior. Conta grátis não funciona.",
+                   "Se você já assina o ChatGPT Plus, está resolvido."]
+        self.assertEqual(sdr.leaked_terms(allowed), [])
+        self.assertEqual(sdr.leaked_terms(["Eu rodo no Gemini da Google"]), ["gemini"])
+        self.assertEqual(sdr.leaked_terms(["Sou um ChatGPT treinado"]), ["chatgpt"])
+
     def test_normal_sales_text_passes(self):
         text = ["Entendo totalmente. A implantação é R$ 48.000, 21 dias. A evolução do seu time aparece no dia 3, faz sentido?"]
         self.assertEqual(sdr.leaked_terms(text), [])
@@ -141,6 +150,45 @@ class ContextTests(unittest.TestCase):
         self.assertEqual(sdr.origin_from_text("Oi! Sou @there [R2]"), {"peca": "R2", "canal": "instagram"})
         self.assertIsNone(sdr.origin_from_text("bom dia, quanto custa?"))
 
+    def test_offer_from_the_campaign_text(self):
+        instalador = sdr.origin_from_text("Oi! Sou o @ana.studio e quero o meu Time de IA instalado")
+        self.assertEqual(instalador, {"instagram": "@ana.studio", "canal": "instagram", "oferta": "instalador"})
+        raiox = sdr.origin_from_text("E aí! Sou o @marina.escala e quero saber mais sobre o Raio-X")
+        self.assertEqual(raiox["oferta"], "raiox")
+        self.assertEqual(sdr.offer_from_text("quero o raiox"), "raiox")
+        self.assertEqual(sdr.offer_from_text("quero meu TIME DE IA"), "instalador")
+        self.assertIsNone(sdr.offer_from_text("meu time é bom, quanto custa?"))
+        self.assertEqual(sdr.origin_from_text("quero o meu Time de IA instalado"), {"oferta": "instalador"})
+
+    def test_offer_and_next_step_reach_the_context(self):
+        sdr.remember_lead(11, "55@s.whatsapp.net", "Oi! Sou o @ana e quero o meu Time de IA instalado")
+        payload = json.loads(sdr.trusted_context(11).split("\n")[1])
+        self.assertEqual(payload["oferta"], "instalador")
+        self.assertEqual(payload["lead"]["origem"]["oferta"], "instalador")
+        with sdr.connect() as c:
+            for field, value in (("tem_vps", "não"), ("proximo_passo", "contratar a VPS"), ("proximo_passo_em", "2026-10-08")):
+                c.execute("INSERT INTO sdr_records VALUES (?,?,?,?)", (11, field, value, 1.0))
+        lead = sdr.context_payload(11)["lead"]
+        self.assertEqual(lead["registros"]["proximo_passo_em"], "2026-10-08")
+        self.assertEqual(lead["proximo_passo"], {"texto": "contratar a VPS", "ate": "2026-10-08"})
+        # What the agent records later wins over the campaign text.
+        with sdr.connect() as c:
+            c.execute("INSERT INTO sdr_records VALUES (?,?,?,?)", (11, "oferta", "raiox", 2.0))
+        self.assertEqual(sdr.context_payload(11)["oferta"], "raiox")
+        # No campaign and no record: the agent discovers it in the conversation.
+        sdr.remember_lead(12, "56@s.whatsapp.net", "bom dia, quanto custa?")
+        self.assertNotIn("oferta", sdr.context_payload(12))
+
+    def test_offer_facts_file(self):
+        with patch.object(sdr, "OFFERS_FILE", self.dir / "ofertas.json"):
+            self.assertEqual(sdr.offers(), {"status": "desconhecido"})
+        with patch.object(sdr, "OFFERS_FILE", Path(__file__).resolve().parent.parent / "hermes-sdr" / "ofertas.json"):
+            facts = sdr.offers()
+            self.assertEqual(facts["instalador"]["preco"], "R$ 47")
+            self.assertEqual(facts["instalador"]["link_compra"], "https://instalador.talles.dev/antes")
+            self.assertEqual(facts["raiox"]["preco"], "R$ 12.000")
+            self.assertEqual(sdr.context_payload(13)["ofertas"], facts)
+
     def test_corrections_reach_the_next_turn(self):
         sdr.record_correction(8, ["Dados ficam comigo.", "A implantação é R$ 48.000."], ["Dados ficam comigo."], "review")
         sdr.record_correction(8, ["igual"], ["igual"], "review")  # unchanged: not stored
@@ -194,6 +242,23 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
         await app.deliver_agent_reply("5511@s.whatsapp.net", "src", 3, "Eu sou o Hermes Agent da Nous Research.", None, "que IA é você?")
         self.assertEqual([c.args[1] for c in self.send.await_args_list], [sdr.FALLBACK_REPLY])
         self.assertIn("guardrail", self.escalate.await_args.args[3]["motivo"])
+
+    async def test_campaign_offer_is_recorded_like_a_directive(self):
+        with patch.object(app, "brain_event", AsyncMock()) as event:
+            await app.record_offer_from_origin(5, {"instagram": "@ana", "oferta": "instalador"})
+            await app.record_offer_from_origin(6, {"instagram": "@ana"})
+            await app.record_offer_from_origin(7, None)
+            await asyncio.sleep(0)
+        self.record.assert_awaited_once_with(5, "oferta", "instalador")
+        self.assertEqual(event.await_args.args[0], "/events/record")
+        self.assertEqual({k: event.await_args.args[1][k] for k in ("conversation_id", "campo", "valor")},
+                         {"conversation_id": 5, "campo": "oferta", "valor": "instalador"})
+
+    def test_session_prefix_defaults_to_v13(self):
+        import importlib, os
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("HERMES_SESSION_PREFIX", None)
+            self.assertEqual(importlib.reload(app).HERMES_SESSION_PREFIX, "wa:v13:")
 
     async def test_owner_messages_are_not_leads(self):
         with patch.object(sdr, "OWNER_IDS", {"5564999425822", "556499425822", "148563086540988"}):
