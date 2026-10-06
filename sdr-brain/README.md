@@ -1,0 +1,17 @@
+# sdr-brain
+
+Serviço FastAPI do SDR (Python 3.13, porta 8090). Estado SQLite fica em `/data` e é persistido entre reinícios.
+
+| Variável | Uso | Padrão |
+|---|---|---|
+| `SDR_BRAIN_TOKEN` | Bearer token obrigatório nas rotas protegidas | sem padrão (503) |
+| `SDR_BRAIN_DB` | arquivo SQLite | `/data/sdr-brain.db` |
+| `SDR_BRAIN_LLM_URL`, `SDR_BRAIN_LLM_KEY`, `SDR_BRAIN_MODEL` | endpoint, chave e modelo OpenAI-compatible | OmniRoute / `agy/gemini-3.7-flash-low` |
+| `BRIDGE_URL` | URL da bridge | `http://integration_bridge:8080` |
+| `CHATWOOT_URL`, `CHATWOOT_ACCOUNT_ID`, `CHATWOOT_API_TOKEN` | transcript | `http://chatwoot_rails:3000` |
+| `OPENREPLY_DSN` | Postgres somente leitura | vazio (desabilitado) |
+| `META_GRAPH_TOKEN`, `IG_BUSINESS_ID` | Business Discovery opcional | vazio (desabilitado) |
+
+Rotas: `GET /health` (sem autenticação), `POST /review`, `POST /events/exchange`, `POST /events/lead` e `POST /events/record` (Bearer obrigatório).
+
+Para executar: `pip install -r requirements.txt && SDR_BRAIN_TOKEN=dev uvicorn app:app --port 8090`. Para testar: `python -m unittest -v` ou `sudo docker build -t sdr-brain:dev sdr-brain && sudo docker run --rm sdr-brain:dev python -m unittest -v`.
