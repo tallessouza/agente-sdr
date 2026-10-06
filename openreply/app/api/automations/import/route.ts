@@ -19,6 +19,7 @@ const campaignSchema = z.object({
   publicReplyMessage: z.string().max(1000).optional().nullable(),
   trackedUrl: z.string().optional().nullable(),
   wholeWordMatch: z.boolean().optional().default(true),
+  exactMatch: z.boolean().optional().default(false),
   isActive: z.boolean().optional().default(true),
 });
 
@@ -100,6 +101,7 @@ export async function POST(request: NextRequest) {
         publicReplyMessage: publicReply ? publicReply.slice(0, 1000) : null,
         isActive: campaign.isActive,
         wholeWordMatch: campaign.wholeWordMatch,
+        exactMatch: campaign.exactMatch,
         workspaceId: context.workspaceId,
         instagramAccountId: account.id,
         reportShareSlug: generateReportShareSlug(),

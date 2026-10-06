@@ -386,6 +386,8 @@
   "a specific post or reel": "指定貼文或 Reels",
   "a specific word or words": "指定關鍵字",
   "also reply when someone DMs": "收到私訊時也回覆",
+  "only when the comment is exactly the word": "僅在留言完全等於關鍵字時",
+  "\"TIME\" and \"time!\" match; \"my time is great\" does not.": "「TIME」和「time!」會觸發；「my time is great」不會。",
   "an opening DM": "開場私訊",
   "and": "與",
   "and restart the server:": "並重新啟動伺服器：",

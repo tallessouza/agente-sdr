@@ -166,12 +166,18 @@ export function foldDiacritics(text: string): string {
  * @param keywords - Array of keywords to match against
  * @param wholeWordMatch - If true, keyword must be a standalone word.
  *                         If false, partial matches are allowed (e.g. "linking" matches "link")
+ * @param exactMatch - If true, the WHOLE comment must equal a keyword after the
+ *                     same cleaning (case, accents, punctuation, emojis and
+ *                     surrounding spaces ignored): "TIME", "time!" and
+ *                     "Time 🙌" match "time"; "meu time é bom" does not.
+ *                     Takes precedence over wholeWordMatch.
  * @returns Match result with the first matched keyword (if any)
  */
 export function matchKeywords(
   commentText: string,
   keywords: string[],
-  wholeWordMatch: boolean = true
+  wholeWordMatch: boolean = true,
+  exactMatch: boolean = false
 ): KeywordMatchResult {
   if (!commentText || keywords.length === 0) {
     return { matched: false, matchedKeyword: null };
@@ -202,7 +208,13 @@ export function matchKeywords(
       ? foldNumericHomoglyphs(cleanedKeyword)
       : cleanedKeyword;
 
-    if (wholeWordMatch) {
+    if (exactMatch) {
+      // Both sides went through the same cleaning, so a comment that is only
+      // the keyword plus punctuation, emojis or spaces compares equal.
+      if (compareText === compareKeyword) {
+        return { matched: true, matchedKeyword: keyword };
+      }
+    } else if (wholeWordMatch) {
       const escapedKeyword = compareKeyword.replace(
         /[.*+?^${}()|[\]\\]/g,
         "\\$&"

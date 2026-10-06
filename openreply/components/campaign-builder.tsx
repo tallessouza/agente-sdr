@@ -37,6 +37,7 @@ interface LoadedCampaign {
   matchAnyPost: boolean;
   keywords: string[];
   matchAnyWord: boolean;
+  exactMatch?: boolean;
   dmTriggerEnabled: boolean;
   dmMessage: string;
   openingDmEnabled: boolean;
@@ -159,6 +160,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
 
   const [matchMode, setMatchMode] = useState<MatchMode>("specific");
   const [keywordText, setKeywordText] = useState("");
+  const [exactMatch, setExactMatch] = useState(false);
   const [dmTriggerEnabled, setDmTriggerEnabled] = useState(false);
 
   const [publicReplyEnabled, setPublicReplyEnabled] = useState(false);
@@ -260,6 +262,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setPostUrl(c.postUrl);
         setMatchMode(c.matchAnyWord ? "any" : "specific");
         setKeywordText(c.keywords.join(", "));
+        setExactMatch(c.exactMatch ?? false);
         setDmTriggerEnabled(c.dmTriggerEnabled ?? false);
         setPublicReplyEnabled(c.publicReplyEnabled);
         setPublicReplyMessages(
@@ -408,6 +411,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       pendingNextReel: triggerScope === "next",
       matchAnyWord: matchMode === "any",
       keywords: matchMode === "any" ? [] : keywords,
+      exactMatch: matchMode === "specific" && exactMatch,
       dmTriggerEnabled,
       dmMessage,
       openingDmEnabled,
@@ -715,6 +719,17 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                 className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
               />
               <p className="text-xs text-muted">{t("Use commas to separate words")}</p>
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+                <span className="text-sm text-foreground">
+                  {t("only when the comment is exactly the word")}
+                </span>
+                <Toggle on={exactMatch} onToggle={() => setExactMatch(!exactMatch)} />
+              </div>
+              {exactMatch && (
+                <p className="text-xs text-muted">
+                  {t("\"TIME\" and \"time!\" match; \"my time is great\" does not.")}
+                </p>
+              )}
             </div>
           )}
           <Radio

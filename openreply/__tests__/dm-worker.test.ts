@@ -149,6 +149,7 @@ const mockAutomation = {
   dmMessage: "Hey {username}! Here is the link: https://example.com",
   isActive: true,
   wholeWordMatch: true,
+  exactMatch: false,
   matchAnyPost: false,
   matchAnyWord: false,
   openingDmEnabled: false,
@@ -347,7 +348,8 @@ describe("DM Worker — Full Pipeline", () => {
     expect(mockMatchKeywords).toHaveBeenCalledWith(
       "I want the LINK!",
       ["LINK", "PRICE"],
-      true
+      true,
+      false
     );
     expect(mockReserveWorkspaceDMSend).toHaveBeenCalledWith("workspace_123");
     expect(mockReserveDMSlot).toHaveBeenCalledWith("ig_456", 0);
@@ -380,6 +382,17 @@ describe("DM Worker — Full Pipeline", () => {
 
     expect(mockSendPrivateReply).not.toHaveBeenCalled();
     expect(mockPrisma.dmLog.upsert).not.toHaveBeenCalled();
+  });
+
+  it("should pass the campaign exact-word mode to the matcher", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([
+      { ...mockAutomation, keywords: ["TIME"], exactMatch: true },
+    ]);
+    const processor = getProcessor();
+
+    await processor(createMockJob({ commentText: "Time 🙌" }));
+
+    expect(mockMatchKeywords).toHaveBeenCalledWith("Time 🙌", ["TIME"], true, true);
   });
 
   it("should skip when keywords do not match", async () => {

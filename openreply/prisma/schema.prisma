@@ -203,6 +203,8 @@ model Automation {
   publicReplyMessages String[] @default([])
   isActive       Boolean @default(true)
   wholeWordMatch Boolean @default(true)
+  // Whole comment must equal a keyword ("TIME", "time!", "Time 🙌"), not just contain it.
+  exactMatch     Boolean @default(false)
   reportShareSlug    String? @unique
   reportShareEnabled Boolean @default(true)
 

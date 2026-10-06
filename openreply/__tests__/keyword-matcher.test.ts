@@ -301,3 +301,30 @@ describe("matchKeywords — diacritics", () => {
     expect(matchKeywords("иод", ["йод"], true).matched).toBe(false);
   });
 });
+
+describe("matchKeywords — exact match (the whole comment is the keyword)", () => {
+  it("matches the keyword alone, ignoring case, spaces, punctuation and emojis at the end", () => {
+    for (const comment of ["TIME", "time!", "Time 🙌", "  time  ", "time!!! 🔥🔥", "Tíme."]) {
+      const result = matchKeywords(comment, ["time"], true, true);
+      expect(result.matched, comment).toBe(true);
+      expect(result.matchedKeyword).toBe("time");
+    }
+  });
+
+  it("does not match a sentence that only contains the keyword", () => {
+    expect(matchKeywords("meu time é bom", ["time"], true, true).matched).toBe(false);
+    expect(matchKeywords("time de futebol", ["TIME"], true, true).matched).toBe(false);
+    expect(matchKeywords("quero o time", ["time"], false, true).matched).toBe(false);
+  });
+
+  it("checks every keyword and reports the one that matched", () => {
+    const result = matchKeywords("Raio-X!", ["time", "raio x"], true, true);
+    expect(result.matched).toBe(true);
+    expect(result.matchedKeyword).toBe("raio x");
+  });
+
+  it("stays off by default, so existing campaigns keep the whole-word behavior", () => {
+    expect(matchKeywords("meu time é bom", ["time"]).matched).toBe(true);
+    expect(matchKeywords("meu time é bom", ["time"], true).matched).toBe(true);
+  });
+});
