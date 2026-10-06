@@ -10,7 +10,7 @@ import sqlite3
 import time
 from contextlib import asynccontextmanager, closing
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -19,6 +19,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 
 import crm
 import enrichment
+import oferta
 
 LOGGER = logging.getLogger("sdr_brain")
 BASE_DIR = Path(__file__).parent
@@ -38,10 +39,19 @@ POST_PRICE_STAGE = ("d4", 345600)
 # After the lead replies inside a sequence, a touch needs this much silence
 # (from anyone) before it may fire; otherwise the conversation is still going.
 QUIET_AFTER_REPLY_SECONDS = int(os.getenv("SDR_QUIET_AFTER_REPLY_SECONDS", "1800"))
+# A next step dated without a time is due at this local hour of that day.
+STEP_DUE_HOUR = int(os.getenv("SDR_STEP_DUE_HOUR", "10"))
+# proximo_passo and proximo_passo_em arrive as separate records: wait a moment
+# so the Chatwoot line shows both together instead of two half lines.
+STEP_ACTIVITY_DELAY = float(os.getenv("SDR_STEP_ACTIVITY_DELAY", "3"))
+STEP_FIELDS = ("oferta", "etapa_spiced", "proximo_passo", "proximo_passo_em")
+NO = {"nao", "não", "no", "n"}
 
 tracked: dict[int, dict[str, Any]] = {}
 supervisor_running: set[int] = set()
 cron_task: asyncio.Task | None = None
+step_announcements: dict[int, asyncio.Task] = {}
+last_step_line: dict[int, str] = {}
 
 
 def prompt(name: str) -> str:
@@ -57,7 +67,10 @@ def connection() -> sqlite3.Connection:
     conn.execute("CREATE TABLE IF NOT EXISTS sequences (conversation_id INTEGER PRIMARY KEY, anchor REAL NOT NULL, ended_at REAL, end_reason TEXT)")
     conn.execute("CREATE TABLE IF NOT EXISTS tracked (conversation_id INTEGER PRIMARY KEY, jid TEXT, last_agent_ts REAL, source_id TEXT, updated REAL)")
     conn.execute("CREATE TABLE IF NOT EXISTS decisions (conversation_id INTEGER, stage TEXT, anchor REAL, decided INTEGER, ts REAL, motivo TEXT, disparar INTEGER, PRIMARY KEY(conversation_id, stage, anchor))")
-    columns = {row[1] for row in conn.execute("PRAGMA table_info(decisions)")}
+    # The step each lead agreed to (status: pendente → cobrado by the deadline
+    # touch, or encerrado on an outcome). Fed by /events/record.
+    conn.execute("CREATE TABLE IF NOT EXISTS lead_steps (conversation_id INTEGER PRIMARY KEY, oferta TEXT, etapa_spiced TEXT, proximo_passo TEXT, proximo_passo_em TEXT, status TEXT, atualizado_em REAL)")
+    columns ={row[1] for row in conn.execute("PRAGMA table_info(decisions)")}
     if "anchor" in columns and "motivo" not in columns:
         conn.execute("ALTER TABLE decisions ADD COLUMN motivo TEXT")
         conn.execute("ALTER TABLE decisions ADD COLUMN disparar INTEGER")
@@ -211,7 +224,9 @@ async def supervisor(payload: dict[str, Any]) -> None:
     supervisor_running.add(cid)
     try:
         transcript = await chatwoot_messages(cid)
-        result = await ask_llm(prompt("supervisor.md") + "\nCONTEXTO:\n" + json.dumps({"evento": payload, "transcript": transcript}, ensure_ascii=False))
+        records = conversation_records(cid)
+        spiced = oferta.spiced_state(records, records.get("oferta") if records.get("oferta") in oferta.OFFERS else None)
+        result = await ask_llm(prompt("supervisor.md") + "\nCONTEXTO:\n" + json.dumps({"evento": payload, "spiced": spiced, "transcript": transcript}, ensure_ascii=False))
         if not isinstance(result, dict):
             return
         if result.get("guidance"):
@@ -330,6 +345,155 @@ def previous_touches(conversation_id: int, anchor: float) -> list[dict[str, Any]
     return [{"estagio": stage, "disparou": bool(fired), "motivo": motivo} for stage, fired, motivo in rows]
 
 
+# --- next step per lead (lead_steps) ------------------------------------------
+
+def lead_step(conversation_id: int) -> dict[str, Any] | None:
+    with closing(connection()) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM lead_steps WHERE conversation_id=?", (conversation_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def record_step(conversation_id: int, campo: str, valor: str, ts: float) -> bool:
+    """Keep lead_steps in line with the agent's records. True when the next step changed."""
+    valor = str(valor or "").strip()
+    current = lead_step(conversation_id) or {}
+    changes: dict[str, Any] = {}
+    if campo in STEP_FIELDS:
+        changes[campo] = valor
+        if campo in ("proximo_passo", "proximo_passo_em"):
+            changes["status"] = "pendente"
+    elif campo == "desfecho":
+        changes["status"] = "encerrado"
+    elif campo in ("tem_vps", "tem_codex") and oferta.fold(valor) in NO and not current.get("proximo_passo_em"):
+        # A missing prerequisite is a next step, not an objection: if the agent did
+        # not date it, check back the next day.
+        tomorrow = (datetime.fromtimestamp(ts, BUSINESS_TZ) + timedelta(days=1)).date().isoformat()
+        what = "a VPS" if campo == "tem_vps" else "o Codex (ou levar a Conta do Gemini)"
+        changes.update(proximo_passo=current.get("proximo_passo") or f"conferir se já contratou {what}",
+                       proximo_passo_em=tomorrow, status="pendente")
+    if not changes:
+        return False
+    row = {"oferta": None, "etapa_spiced": None, "proximo_passo": None, "proximo_passo_em": None, "status": None,
+           **{k: v for k, v in current.items() if k != "conversation_id"}, **changes, "atualizado_em": ts}
+    with closing(connection()) as conn:
+        conn.execute("INSERT INTO lead_steps(conversation_id,oferta,etapa_spiced,proximo_passo,proximo_passo_em,status,atualizado_em) VALUES(?,?,?,?,?,?,?) "
+                     "ON CONFLICT(conversation_id) DO UPDATE SET oferta=excluded.oferta, etapa_spiced=excluded.etapa_spiced, proximo_passo=excluded.proximo_passo, "
+                     "proximo_passo_em=excluded.proximo_passo_em, status=excluded.status, atualizado_em=excluded.atualizado_em",
+                     (conversation_id, row["oferta"], row["etapa_spiced"], row["proximo_passo"], row["proximo_passo_em"], row["status"], row["atualizado_em"]))
+        conn.commit()
+    return any(current.get(k) != row[k] for k in ("proximo_passo", "proximo_passo_em"))
+
+
+def step_due_ts(step: dict[str, Any] | None) -> float | None:
+    """When the next step is due: the given time, or STEP_DUE_HOUR on a bare date."""
+    raw = str((step or {}).get("proximo_passo_em") or "").strip()
+    if not raw:
+        return None
+    try:
+        if re.fullmatch(r"\d{1,2}/\d{1,2}/\d{4}", raw):
+            when = datetime.strptime(raw, "%d/%m/%Y")
+        else:
+            when = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if len(raw) <= 10:
+        when = when.replace(hour=STEP_DUE_HOUR, minute=0)
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=BUSINESS_TZ)
+    return when.timestamp()
+
+
+def step_line(step: dict[str, Any] | None) -> str:
+    """The operator's line in Chatwoot: 📌 Próximo passo: … até …"""
+    text = str((step or {}).get("proximo_passo") or "").strip()
+    due = step_due_ts(step)
+    raw = str((step or {}).get("proximo_passo_em") or "").strip()
+    if not text and not raw:
+        return ""
+    when = datetime.fromtimestamp(due, BUSINESS_TZ).strftime("%d/%m/%Y" if len(raw) <= 10 else "%d/%m/%Y %H:%M") if due else (raw or "sem data")
+    return f"📌 Próximo passo: {text or '(sem descrição)'} até {when}"
+
+
+async def announce_step(conversation_id: int, delay: float) -> None:
+    try:
+        await asyncio.sleep(delay)
+        line = step_line(lead_step(conversation_id))
+        if line and line != last_step_line.get(conversation_id):
+            last_step_line[conversation_id] = line
+            await crm.activity(conversation_id, line)
+    finally:
+        step_announcements.pop(conversation_id, None)
+
+
+def schedule_step_announcement(conversation_id: int) -> None:
+    pending = step_announcements.pop(conversation_id, None)
+    if pending:
+        pending.cancel()
+    step_announcements[conversation_id] = asyncio.create_task(announce_step(conversation_id, STEP_ACTIVITY_DELAY))
+
+
+def conversation_records(conversation_id: int) -> dict[str, str]:
+    """Everything the agent recorded in this conversation, last value wins."""
+    with closing(connection()) as conn:
+        rows = conn.execute("SELECT payload FROM events WHERE conversation_id=? AND kind='record' ORDER BY id", (conversation_id,)).fetchall()
+    records: dict[str, str] = {}
+    for (raw,) in rows:
+        try:
+            item = json.loads(raw)
+        except ValueError:
+            continue
+        if item.get("campo"):
+            records[str(item["campo"])] = str(item.get("valor", ""))
+    return records
+
+
+async def track_record(payload: dict[str, Any]) -> None:
+    """Records → lead_steps, SPICED attributes on the conversation, next-step line."""
+    try:
+        cid, campo, valor = int(payload["conversation_id"]), str(payload.get("campo") or ""), str(payload.get("valor") or "")
+        changed = record_step(cid, campo, valor, float(payload.get("ts") or time.time()))
+        attributes = {crm.SPICED_ATTRIBUTES_BY_FIELD[campo]: valor} if campo in crm.SPICED_ATTRIBUTES_BY_FIELD else {}
+        if changed:
+            step = lead_step(cid) or {}
+            attributes.update(spiced_proximo_passo=step.get("proximo_passo") or "", spiced_proximo_passo_em=step.get("proximo_passo_em") or "")
+        if attributes:
+            await crm.set_conversation_attributes(cid, attributes)
+        if changed:
+            schedule_step_announcement(cid)
+    except Exception:
+        LOGGER.exception("Record tracking failed for %s", payload.get("conversation_id"))
+
+
+async def deadline_touch(conversation_id: int, state: dict[str, Any], step: dict[str, Any], due: float, now: float, last_lead: float) -> None:
+    """The date the lead agreed to has come: one touch about that step."""
+    records = state.get("lead", {}).get("registros", {})
+    transcript = await chatwoot_messages(conversation_id)
+    context = {
+        "stage": "prazo", "gatilho": "chegou a data do próximo passo combinado",
+        "oferta": oferta.current_offer(state.get("context") or {}) or records.get("oferta") or step.get("oferta"),
+        "proximo_passo": {"texto": step.get("proximo_passo"), "ate": step.get("proximo_passo_em")},
+        "evento_critico": records.get("evento_critico"),
+        "pre_requisitos": {"tem_vps": records.get("tem_vps"), "tem_codex": records.get("tem_codex")},
+        "sequencia": {"lead_respondeu_durante": False, "toques_anteriores": previous_touches(conversation_id, due)},
+        "transcript": transcript, "lead": state.get("lead", {}), "state": state,
+    }
+    result = await ask_llm(prompt("fup.md") + "\nCONTEXTO:\n" + json.dumps(context, ensure_ascii=False)) or {"disparar": False, "motivo": "review_unavailable"}
+    disparar = bool(result.get("disparar") and result.get("texto"))
+    motivo, text = str(result.get("motivo", "")), str(result.get("texto") or "")[:500]
+    if disparar:
+        text, motivo, disparar = await review_touch(conversation_id, text, motivo, state, transcript)
+    record_decision(conversation_id, "prazo", due, now, disparar, motivo)
+    with closing(connection()) as conn:
+        conn.execute("UPDATE lead_steps SET status='cobrado' WHERE conversation_id=?", (conversation_id,))
+        conn.commit()
+    if disparar:
+        await bridge_post("/sdr/followups", {"conversation_id": conversation_id, "send_at": now, "text": text, "motivo": motivo, "after_ts": last_lead, "stage": "prazo"})
+        await crm.activity(conversation_id, f"⏱️ Toque do próximo passo agendado: {motivo}")
+    else:
+        await crm.activity(conversation_id, f"⏱️ Toque do próximo passo não enviado: {motivo}")
+
+
 async def followup_once(now: float | None = None) -> None:
     """One pass of the follow-up cadence.
 
@@ -365,6 +529,14 @@ async def followup_once(now: float | None = None) -> None:
             continue
         last_agent = float(state.get("last_agent_ts") or local_state.get("last_agent_ts") or 0)
         last_lead = float(state.get("last_lead_ts") or 0)
+        # Besides silence, the date of the agreed next step triggers a touch
+        # (e.g. "contrato a VPS amanhã": the next day, ask if it is done).
+        step = lead_step(conversation_id)
+        due = step_due_ts(step) if step and step.get("status") == "pendente" else None
+        if due is not None and current >= due and not decided(conversation_id, "prazo", due) \
+                and not (last_lead >= last_agent and last_lead > float(step.get("atualizado_em") or 0)):
+            await deadline_touch(conversation_id, state, step, due, current, last_lead)
+            continue
         if not active:
             # A new sequence needs a new silence: the agent spoke last, after
             # whatever ended the previous sequence.
@@ -395,6 +567,9 @@ async def followup_once(now: float | None = None) -> None:
         transcript = await chatwoot_messages(conversation_id)
         context = {
             "stage": stage,
+            "oferta": oferta.current_offer(state.get("context") or {}) or records.get("oferta"),
+            "proximo_passo": {"texto": records.get("proximo_passo"), "ate": records.get("proximo_passo_em")},
+            "evento_critico": records.get("evento_critico"),
             "sequencia": {"lead_respondeu_durante": replied_during, "toques_anteriores": previous_touches(conversation_id, anchor)},
             "transcript": transcript, "lead": state.get("lead", {}), "state": state,
         }
@@ -482,9 +657,20 @@ async def run_review(payload: dict[str, Any]) -> dict[str, Any]:
     transcript = payload.pop("transcript", None)
     if not isinstance(transcript, list):
         transcript = await chatwoot_messages(int(conversation_id)) if isinstance(conversation_id, int) else []
+    context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+    draft_parts = [str(part) for part in draft] if isinstance(draft, list) else []
+    lead_texts = [str(payload.get("lead_message") or "")] + [str(row.get("texto", "")) for row in transcript if isinstance(row, dict) and row.get("autor") == "lead"]
+    issues = oferta.check(draft_parts, context, lead_texts)
+    dados = {**payload, "transcript": transcript, "oferta": oferta.current_offer(context) or "desconhecida",
+             "fatos_oferta": oferta.facts(context), "verificacao_automatica": issues}
     # One slower attempt fits the bridge's wait; a retry would land after it gave up.
-    result = await ask_llm(prompt("revisor.md") + "\nDADOS:\n" + json.dumps({**payload, "transcript": transcript}, ensure_ascii=False),
+    result = await ask_llm(prompt("revisor.md") + "\nDADOS:\n" + json.dumps(dados, ensure_ascii=False),
                            attempts=1, timeout=float(os.getenv("SDR_REVIEW_LLM_TIMEOUT", "18")))
+    decision = judged_review(result, draft)
+    return enforce_offer_rules(decision, issues, context, lead_texts)
+
+
+def judged_review(result: Any, draft: Any) -> dict[str, Any]:
     if not isinstance(result, dict) or result.get("decision") not in {"aprovar", "reescrever", "bloquear"}:
         return {"decision": "aprovar", "motivo": "review_unavailable"}
     if result["decision"] == "reescrever":
@@ -494,6 +680,17 @@ async def run_review(payload: dict[str, Any]) -> dict[str, Any]:
         original = "\n".join(draft) if isinstance(draft, list) else ""
         return {"decision": "reescrever", "parts": [preserve_directives(original, part) for part in parts], "motivo": str(result.get("motivo", ""))}
     return {"decision": result["decision"], **({"motivo": str(result.get("motivo", ""))} if result["decision"] == "bloquear" else {})}
+
+
+def enforce_offer_rules(decision: dict[str, Any], issues: list[str], context: dict[str, Any], lead_texts: list[str]) -> dict[str, Any]:
+    """Hard offer violations never go out, whatever the model decided or if it was down."""
+    if decision["decision"] == "bloquear" or not issues:
+        return decision
+    if decision["decision"] == "reescrever":
+        issues = oferta.check([re.sub(r"\[\[.*?\]\]", "", part) for part in decision["parts"]], context, lead_texts)
+        if not issues:
+            return decision
+    return {"decision": "bloquear", "motivo": "verificação automática: " + "; ".join(issues)}
 
 
 @app.post("/events/exchange", status_code=202)
@@ -515,6 +712,7 @@ async def record(request: Request, background_tasks: BackgroundTasks) -> dict[st
     payload = await request.json()
     save_event(payload, "record")
     campo, valor, cid = payload.get("campo"), payload.get("valor", ""), payload["conversation_id"]
+    background_tasks.add_task(track_record, payload)
     if campo == "instagram":  # the lead's own @, typed when the agent asked
         background_tasks.add_task(enrich, {"conversation_id": cid, "typed_instagram": valor, "ts": payload.get("ts")})
     elif campo == "arroba":  # the company @, used for the company profile

@@ -30,7 +30,24 @@ CONTACT_ATTRIBUTES = [
     ("ig_empresa_seguidores", "Instagram da empresa: seguidores", "number"),
     ("ig_campanha", "Instagram: campanha de origem", "text"),
 ]
+# Conversation attributes (attribute_model 0): where the lead is in SPICED and
+# the step he agreed to, so the operator sees it in the conversation sidebar.
+SPICED_ATTRIBUTES = [
+    ("spiced_oferta", "SPICED: oferta", "text", "oferta"),
+    ("spiced_etapa", "SPICED: etapa", "text", "etapa_spiced"),
+    ("spiced_situacao", "SPICED: S, situação", "text", "situacao"),
+    ("spiced_dor", "SPICED: P, dor", "text", "dor"),
+    ("spiced_impacto", "SPICED: I, impacto", "text", "impacto"),
+    ("spiced_evento_critico", "SPICED: C, evento crítico", "text", "evento_critico"),
+    ("spiced_decisao", "SPICED: D, quem decide", "text", "decisao"),
+    ("spiced_tem_vps", "SPICED: tem VPS", "text", "tem_vps"),
+    ("spiced_tem_codex", "SPICED: tem Codex", "text", "tem_codex"),
+    ("spiced_proximo_passo", "Próximo passo", "text", "proximo_passo"),
+    ("spiced_proximo_passo_em", "Próximo passo: até", "text", "proximo_passo_em"),
+]
+SPICED_ATTRIBUTES_BY_FIELD = {field: key for key, _name, _kind, field in SPICED_ATTRIBUTES}
 _definitions_ready = False
+_conversation_definitions_ready = False
 
 
 def _base() -> tuple[str, dict[str, str]] | None:
@@ -74,6 +91,50 @@ async def ensure_definitions() -> None:
         _definitions_ready = True
     except Exception as exc:
         LOGGER.warning("Chatwoot attribute definitions failed: %s", exc)
+
+
+async def ensure_conversation_definitions() -> None:
+    global _conversation_definitions_ready
+    base = _base()
+    if _conversation_definitions_ready or not base:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            response = await client.get(f"{base[0]}/custom_attribute_definitions", headers=base[1], params={"attribute_model": 0})
+            response.raise_for_status()
+            existing = {item.get("attribute_key") for item in response.json()}
+            for key, name, kind, _field in SPICED_ATTRIBUTES:
+                if key in existing:
+                    continue
+                created = await client.post(f"{base[0]}/custom_attribute_definitions", headers=base[1], json={
+                    "attribute_display_name": name, "attribute_key": key, "attribute_display_type": kind,
+                    "attribute_model": 0, "attribute_description": "Preenchido pelo SDR a partir dos registros do agente"})
+                created.raise_for_status()
+        _conversation_definitions_ready = True
+    except Exception as exc:
+        LOGGER.warning("Chatwoot conversation attribute definitions failed: %s", exc)
+
+
+async def set_conversation_attributes(conversation_id: int, attributes: dict[str, Any]) -> None:
+    """Merge spiced_* into the conversation's custom attributes.
+
+    Chatwoot replaces the whole map on POST, so read it first and keep what the
+    bridge already wrote (sdr_*).
+    """
+    base = _base()
+    if not base or not attributes:
+        return
+    await ensure_conversation_definitions()
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            conversation = await client.get(f"{base[0]}/conversations/{conversation_id}", headers=base[1])
+            conversation.raise_for_status()
+            current = conversation.json().get("custom_attributes") or {}
+            response = await client.post(f"{base[0]}/conversations/{conversation_id}/custom_attributes", headers=base[1],
+                                         json={"custom_attributes": {**current, **attributes}})
+            response.raise_for_status()
+    except Exception as exc:
+        LOGGER.warning("Chatwoot conversation attributes failed for %s: %s", conversation_id, exc)
 
 
 def _posts_text(posts: list[dict[str, Any]]) -> str:

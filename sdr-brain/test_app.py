@@ -5,6 +5,7 @@ from contextlib import closing
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 os.environ["SDR_BRAIN_TOKEN"] = "test"
@@ -326,5 +327,207 @@ class Acceptance(unittest.TestCase):
         self.assertEqual(app.due_stage(4 * 86400 + 10, post_price=False), "d1")
         self.assertEqual(app.due_stage(4 * 86400 + 10, post_price=True), "d4")
         self.assertIsNone(app.due_stage(100, post_price=True))
+
+OFERTAS = json.loads((Path(__file__).resolve().parent.parent / "hermes-sdr" / "ofertas.json").read_text(encoding="utf-8"))
+INSTALADOR = {"oferta": "instalador", "ofertas": OFERTAS, "capacidade": {"status": "ok"}, "lead": {"oferta": "instalador"}}
+
+
+class OfferRules(unittest.TestCase):
+    def test_installer_facts_come_from_ofertas_json(self):
+        facts = "\n".join(app.oferta.facts(INSTALADOR))
+        self.assertIn("https://instalador.talles.dev/antes", facts)
+        self.assertIn("R$ 47", facts)
+        self.assertIn("Pronto em 48 h", facts)
+        self.assertEqual(app.oferta.facts({"ofertas": OFERTAS}), [])  # unknown offer: no installer list
+
+    def test_prices_links_secrets_and_promises(self):
+        check = lambda text, lead=(): app.oferta.check([text], INSTALADOR, list(lead))
+        self.assertEqual(check("A instalação é R$ 47, pagamento único. A VPS fica em uns R$ 119 por mês."), [])
+        self.assertEqual(check("Compra por aqui: https://instalador.talles.dev/antes"), [])
+        self.assertIn("valor que não existe na oferta: R$ 97", check("Hoje sai por R$ 97."))
+        self.assertIn("valor que não existe na oferta: R$ 2.000", check("Uma pessoa custa R$ 2.000"))
+        self.assertEqual(check("Você me disse que paga R$ 2.000 pra sua secretária.", ["pago uns R$ 2 mil pra ela"]), [])
+        self.assertTrue(check("O checkout é pay.kiwify.com.br/ju44Xqc")[0].startswith("link fora da oferta"))
+        self.assertTrue(any("senha" in i for i in check("Me passa a senha da VPS que eu já adianto.")))
+        self.assertTrue(any("senha" in i for i in check("Qual é o seu IP?")))
+        self.assertEqual(check("Não me mande a senha por aqui. Ela vai só no formulário cifrado, depois da compra."), [])
+        self.assertIn("promessa de faturamento ou vendas", check("Com o time você vai faturar o dobro."))
+        self.assertIn("desconto ou cupom (não existe)", check("Pra você eu consigo um desconto."))
+        self.assertEqual(check("Não tem desconto, o preço é esse."), [])
+        self.assertTrue(any("48 h" in i for i in check("Fica pronto em 24 horas.")))
+        self.assertEqual(check("Ele responde 24 horas por dia."), [])
+
+    def test_forbidden_names_in_both_offers_and_prices_only_in_installer(self):
+        raiox = {"oferta": "raiox", "ofertas": OFERTAS}
+        self.assertEqual(app.oferta.check(["O Raio-X é R$ 12.000; um dev pleno custa R$ 12 a 18 mil."], raiox, []), [])
+        self.assertEqual(app.oferta.check(["É tipo a Naia, só que instalada."], raiox, []), ["nome proibido: naia"])
+        self.assertIn("nome proibido: squad", app.oferta.check(["Monte o seu Squad"], INSTALADOR, []))
+
+    def test_spiced_state_lists_missing_letters(self):
+        state = app.oferta.spiced_state({"situacao": "clínica, 3 pessoas", "dor": "responder", "tem_vps": "sim"}, "instalador")
+        self.assertEqual(state["registrado"], {"S": "clínica, 3 pessoas", "P": "responder"})
+        self.assertEqual(state["faltando"], ["I", "C", "D", "D:tem_codex"])
+        self.assertNotIn("D:tem_vps", app.oferta.spiced_state({}, "raiox")["faltando"])
+
+
+class OfferReview(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app.app)
+        self.headers = {"Authorization": "Bearer test"}
+
+    def review(self, parts, verdict, lead_message="quanto custa?"):
+        seen = []
+
+        async def llm(instruction, **kwargs):
+            seen.append(instruction)
+            return verdict
+
+        with patch.object(app, "ask_llm", new=llm), patch.object(app.crm, "activity", new=AsyncMock()):
+            result = self.client.post("/review", headers=self.headers, json={
+                "conversation_id": 501, "lead_message": lead_message, "draft_parts": parts, "directives": [],
+                "context": INSTALADOR, "transcript": [{"autor": "lead", "texto": lead_message, "quando": ""}]}).json()
+        return result, seen
+
+    def test_reviewer_gets_the_generated_fact_list_and_the_offer(self):
+        result, seen = self.review(["A instalação é R$ 47, pagamento único."], {"decision": "aprovar"})
+        self.assertEqual(result["decision"], "aprovar")
+        dados = json.loads(seen[0].split("\nDADOS:\n", 1)[1])
+        self.assertEqual(dados["oferta"], "instalador")
+        self.assertTrue(any("instalador.talles.dev/antes" in line for line in dados["fatos_oferta"]))
+        self.assertEqual(dados["verificacao_automatica"], [])
+
+    def test_hard_violation_is_blocked_even_if_the_model_approves_or_is_down(self):
+        for verdict in ({"decision": "aprovar"}, None):
+            result, _ = self.review(["Me passa a senha da VPS que eu adianto aqui."], verdict)
+            self.assertEqual(result["decision"], "bloquear")
+            self.assertIn("verificação automática", result["motivo"])
+        result, _ = self.review(["Pra você sai por R$ 97."], {"decision": "aprovar"})
+        self.assertIn("R$ 97", result["motivo"])
+
+    def test_a_rewrite_that_fixes_the_violation_goes_through(self):
+        fixed = {"decision": "reescrever", "parts": ["A senha vai só no formulário cifrado, depois da compra. Você já tem a VPS?"], "motivo": "pedido de senha"}
+        result, _ = self.review(["Me passa a senha da VPS."], fixed)
+        self.assertEqual(result["decision"], "reescrever")
+        still_bad = {"decision": "reescrever", "parts": ["Me manda o token do bot aqui."], "motivo": "x"}
+        self.assertEqual(self.review(["Me passa a senha da VPS."], still_bad)[0]["decision"], "bloquear")
+
+
+class NextSteps(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app.app)
+        self.headers = {"Authorization": "Bearer test"}
+        app.last_step_line.clear()
+        with closing(app.connection()) as conn:
+            conn.execute("DELETE FROM lead_steps"); conn.execute("DELETE FROM decisions"); conn.execute("DELETE FROM sequences")
+            conn.execute("DELETE FROM events WHERE kind='record'"); conn.commit()
+
+    def post_records(self, cid, records, ts=1790600400.0):
+        lines, attrs = [], []
+
+        async def activity(conversation_id, text): lines.append(text)
+        async def set_attrs(conversation_id, attributes): attrs.append(attributes)
+
+        with patch.object(app, "STEP_ACTIVITY_DELAY", 0), patch.object(app.crm, "activity", new=activity), \
+                patch.object(app.crm, "set_conversation_attributes", new=set_attrs):
+            for campo, valor in records:
+                self.assertEqual(self.client.post("/events/record", headers=self.headers, json={"conversation_id": cid, "campo": campo, "valor": valor, "ts": ts}).status_code, 202)
+
+            async def drain():
+                while app.step_announcements:
+                    await asyncio.gather(*list(app.step_announcements.values()), return_exceptions=True)
+            asyncio.run(drain())
+        return lines, attrs
+
+    def test_records_feed_lead_steps_attributes_and_one_activity_line(self):
+        lines, attrs = self.post_records(601, [("oferta", "instalador"), ("etapa_spiced", "D"), ("tem_vps", "sim"),
+                                               ("proximo_passo", "comprar pelo link"), ("proximo_passo_em", "2026-10-08")])
+        step = app.lead_step(601)
+        self.assertEqual({k: step[k] for k in ("oferta", "etapa_spiced", "proximo_passo", "proximo_passo_em", "status")},
+                         {"oferta": "instalador", "etapa_spiced": "D", "proximo_passo": "comprar pelo link", "proximo_passo_em": "2026-10-08", "status": "pendente"})
+        self.assertIn({"spiced_oferta": "instalador"}, attrs)
+        self.assertIn({"spiced_tem_vps": "sim"}, attrs)
+        self.assertIn("📌 Próximo passo: comprar pelo link até 08/10/2026", lines)
+        self.assertTrue(all(line.startswith("📌") for line in lines))
+        self.assertEqual(self.post_records(601, [("proximo_passo_em", "2026-10-08")])[0], [])  # same step: no new line
+
+    def test_missing_prerequisite_becomes_a_next_step_for_the_next_day(self):
+        self.post_records(602, [("oferta", "instalador"), ("tem_vps", "não")], ts=1790600400.0)  # 28/09 10:00
+        step = app.lead_step(602)
+        self.assertEqual((step["proximo_passo_em"], step["status"]), ("2026-09-29", "pendente"))
+        self.assertIn("VPS", step["proximo_passo"])
+        # A date the agent agreed with the lead wins and is not overwritten.
+        self.post_records(603, [("proximo_passo", "contratar a VPS"), ("proximo_passo_em", "2026-10-02"), ("tem_codex", "não")])
+        self.assertEqual(app.lead_step(603)["proximo_passo_em"], "2026-10-02")
+
+    def test_outcome_closes_the_step_and_formats(self):
+        self.post_records(604, [("proximo_passo", "x"), ("proximo_passo_em", "2026-10-08T15:30"), ("desfecho", "perdido")])
+        self.assertEqual(app.lead_step(604)["status"], "encerrado")
+        self.assertEqual(app.step_line({"proximo_passo": "ligar", "proximo_passo_em": "2026-10-08T15:30"}), "📌 Próximo passo: ligar até 08/10/2026 15:30")
+        self.assertEqual(app.step_line({"proximo_passo": "ligar", "proximo_passo_em": "semana que vem"}), "📌 Próximo passo: ligar até semana que vem")
+        self.assertIsNone(app.step_due_ts({"proximo_passo_em": "semana que vem"}))
+        self.assertEqual(datetime.fromtimestamp(app.step_due_ts({"proximo_passo_em": "08/10/2026"}), app.BUSINESS_TZ).hour, app.STEP_DUE_HOUR)
+
+    def run_pass(self, cid, now, state):
+        posted, prompts = [], []
+
+        async def llm(instruction, **kwargs):
+            prompts.append(instruction)
+            if '"tipo": "toque"' in instruction:
+                return {"decision": "aprovar"}
+            return {"disparar": True, "texto": "Conseguiu contratar a VPS ontem, ou ficou pra outro dia?", "motivo": "prazo"}
+
+        async def post(path, payload): posted.append(payload)
+
+        class Bridge(FakeHTTP):
+            async def get(self, url, **kwargs):
+                class R:
+                    status_code = 200
+                    def raise_for_status(self): pass
+                    def json(self): return state
+                return R()
+
+        app.tracked.clear(); app.tracked[cid] = {"jid": "j", "last_agent_ts": state["last_agent_ts"]}
+        with patch.object(app, "ask_llm", new=llm), patch.object(app, "bridge_post", new=post), patch.object(app.crm, "activity", new=AsyncMock()), \
+                patch.object(app, "chatwoot_messages", new=AsyncMock(return_value=[])), patch.object(app.httpx, "AsyncClient", Bridge):
+            asyncio.run(app.followup_once(now=now))
+        return posted, prompts
+
+    def test_due_next_step_triggers_one_touch_besides_silence(self):
+        self.post_records(605, [("oferta", "instalador"), ("tem_vps", "não")], ts=1790600400.0)  # due 29/09 10:00
+        due = app.step_due_ts(app.lead_step(605))
+        agent = due - 3 * 3600  # the lead talked before; silence stages long gone or not reached
+        state = {"last_agent_ts": agent, "last_lead_ts": agent - 60, "lead": {"registros": {"oferta": "instalador", "tem_vps": "não"}},
+                 "context": {"oferta": "instalador", "ofertas": OFERTAS}}
+        before = self.run_pass(605, due - 60, state)[0]  # the silence cadence runs as usual
+        self.assertEqual([p["stage"] for p in before], ["2h"])
+        with closing(app.connection()) as conn:
+            conn.execute("DELETE FROM decisions"); conn.execute("DELETE FROM sequences"); conn.commit()
+        posted, prompts = self.run_pass(605, due + 60, state)
+        self.assertEqual([p["stage"] for p in posted], ["prazo"])
+        context = json.loads(prompts[0].split("\nCONTEXTO:\n", 1)[1])
+        self.assertEqual((context["stage"], context["oferta"], context["pre_requisitos"]["tem_vps"]), ("prazo", "instalador", "não"))
+        self.assertEqual(app.lead_step(605)["status"], "cobrado")
+        self.assertNotIn("prazo", [p["stage"] for p in self.run_pass(605, due + 120, state)[0]])  # once
+
+    def test_due_step_waits_while_the_lead_owes_nothing_but_the_agent_does(self):
+        self.post_records(606, [("proximo_passo", "mandar o link"), ("proximo_passo_em", "2026-09-29")], ts=1790600400.0)
+        due = app.step_due_ts(app.lead_step(606))
+        state = {"last_agent_ts": due - 600, "last_lead_ts": due - 300, "lead": {"registros": {}}}  # lead spoke last
+        self.assertEqual(self.run_pass(606, due + 60, state)[0], [])
+        self.assertEqual(app.lead_step(606)["status"], "pendente")
+
+    def test_supervisor_sees_missing_spiced_letters(self):
+        self.post_records(607, [("oferta", "instalador"), ("situacao", "salão com 4 pessoas")])
+        seen = []
+
+        async def llm(instruction, **kwargs):
+            seen.append(instruction); return {"guidance": None, "escalate": False}
+
+        with patch.object(app, "chatwoot_messages", new=AsyncMock(return_value=[])), patch.object(app, "ask_llm", new=llm):
+            asyncio.run(app.supervisor({"conversation_id": 607}))
+        spiced = json.loads(seen[0].split("\nCONTEXTO:\n", 1)[1])["spiced"]
+        self.assertEqual(spiced["oferta"], "instalador")
+        self.assertEqual(spiced["faltando"], ["P", "I", "C", "D", "D:tem_vps", "D:tem_codex"])
+
 
 if __name__ == "__main__": unittest.main(verbosity=2)
