@@ -1,0 +1,56 @@
+
+[1] LEAD: E aí! Sou o @patricia.ingles e quero o meu Time de IA instalado
+    AGENTE: Oi! Sou o agente do Talles. Bora colocar o seu time de IA pra rodar, @patricia.ingles.
+    AGENTE: Pra eu entender como fica no seu caso, me conta: o que você faz no dia a dia e quem mais toca o negócio com você hoje?
+    [diretivas] registro:oferta=instalador; registro:etapa_spiced=S; registro:proximo_passo=entender a rotina e situacao; registro:proximo_passo_em=2026-10-07
+
+[2] LEAD: Oi! Tenho uma escola de inglês online, toco a operação junto com meu sócio e temos um time de 9 pessoas aqui (suporte, comercial e professores). 
+
+Mas me diz direto: quanto a mais eu vou faturar com esse time de IA?
+    AGENTE: Isso eu não prometo. O time de IA não traz promessa de faturamento nem de vendas.
+    AGENTE: O que muda de fato é tirar tarefas do seu dia: ele chega pronto no seu Telegram pra responder, escrever, organizar coisas e te mandar a pauta do dia logo cedo.
+    AGENTE: Hoje, o que mais trava a sua rotina e a do seu sócio: organizar as demandas desse time de 9 pessoas ou produzir materiais e comunicações?
+    [diretivas] registro:situacao=escola de inglês online, ela e o sócio com equipe de 9 pessoas; registro:perfil_raiox=sim; registro:etapa_spiced=P; registro:proximo_passo=descobrir a dor principal; registro:proximo_passo_em=2026-10-07
+
+[3] LEAD: Gostei da honestidade, prefiro assim a promessa milagrosa.
+
+Hoje o que mais drena tempo é o suporte respondendo as mesmas dúvidas de acesso o dia inteiro, e eu e meu sócio acabamos nos perdendo na organização das demandas do time. 
+
+Se eu for colocar isso pra rodar, tem desconto se eu levar pra minha equipe toda? Como funciona?
+    AGENTE: Não temos desconto ou condição especial por aqui, o valor é fixo. E vale alinhar uma coisa importante: tirar dúvidas de suporte dos alunos no WhatsApp é o Atendimento no WhatsApp (R$ 3.000), um produto separado que não vem na instalação de R$ 47.
+    AGENTE: A instalação de R$ 47 coloca o time de IA no Telegram pra resolver a outra ponta: organizar as demandas do seu time de 9 pessoas, estruturar mensagens e te mandar a pauta do dia pronta.
+    AGENTE: Pra colocar pra rodar, são necessários dois pré-requisitos: uma VPS (um servidor próprio, cerca de R$ 119/mês) e o plano pago do ChatGPT (ou a Conta do Gemini junto na compra). Vocês já têm algum desses hoje, ou começariam do zero?
+    [diretivas] registro:dor="suporte respondendo as mesmas dúvidas de acesso o dia inteiro, e eu e meu sócio acabamos nos perdendo na organização das demandas do time"; registro:etapa_spiced=D; registro:proximo_passo=verificar pre-requisitos VPS e Codex; registro:proximo_passo_em=2026-10-07
+
+[4] LEAD: A VPS e o ChatGPT a gente já tem, nosso dev deixou configurado.
+
+Vou fechar essa instalação de R$ 47 pra gente testar aqui internamente. Manda o link.
+
+E se der certo esse teste, como funciona pra gente estruturar algo maior pra operação toda e ver esse do WhatsApp? Preciso alinhar com meu sócio.
+    AGENTE: O melhor caminho é rodar esse teste primeiro. Com o time funcionando no Telegram de vocês, fica simples avaliar o Atendimento no WhatsApp e os próximos passos da operação.
+    AGENTE: O caminho é por aqui https://instalador.talles.dev/antes
+A página confere duas coisas antes de liberar a compra, a VPS e o Codex (ou a Conta do Gemini junto na compra).
+    AGENTE: Depois do pagamento você entra na área do cliente com o mesmo e-mail, preenche 5 campos, e em até 48 h o time te avisa "Pronto." no Telegram. Consegue fazer hoje, ou fica para amanhã?
+    [diretivas] registro:tem_vps=sim; registro:tem_codex=sim; registro:decisao=ela e o sócio; registro:etapa_spiced=fechamento; registro:link_enviado=sim; registro:proximo_passo=comprar pelo link; registro:proximo_passo_em=2026-10-07
+
+[5] LEAD: Vou fazer agora mesmo. Assim que rodar esse teste e a gente ver na prática, chamo meu sócio pra gente avaliar o do WhatsApp. Valeu!
+    AGENTE: Show! Fica à vontade pra me chamar por aqui assim que preencher o formulário.
+    [diretivas] registro:proximo_passo=comprar e preencher o formulário; registro:proximo_passo_em=2026-10-07
+
+[6] LEAD: Combinado, vou lá preencher. Qualquer dúvida te chamo aqui. Valeu!
+    (silêncio: nada enviado; fim da simulação)
+
+== registros ==
+{
+ "oferta": "instalador",
+ "etapa_spiced": "fechamento",
+ "proximo_passo": "comprar e preencher o formulário",
+ "proximo_passo_em": "2026-10-07",
+ "situacao": "escola de inglês online, ela e o sócio com equipe de 9 pessoas",
+ "perfil_raiox": "sim",
+ "dor": "\"suporte respondendo as mesmas dúvidas de acesso o dia inteiro, e eu e meu sócio acabamos nos perdendo na organização das demandas do time\"",
+ "tem_vps": "sim",
+ "tem_codex": "sim",
+ "decisao": "ela e o sócio",
+ "link_enviado": "sim"
+}

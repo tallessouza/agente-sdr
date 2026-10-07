@@ -1,0 +1,63 @@
+
+[1] LEAD: E aí! Sou o @ju.salao e quero o meu Time de IA instalado
+    AGENTE: Oi! Sou o agente do Talles. Bora colocar o seu time de IA pra rodar, @ju.salao.
+    AGENTE: Pra eu entender certinho como fica no seu caso, como funciona a rotina do salão hoje? Você toca tudo sozinha ou tem equipe com você?
+    [diretivas] registro:oferta=instalador; registro:etapa_spiced=S; registro:proximo_passo=responder como funciona o salão hoje; registro:proximo_passo_em=2026-10-07
+
+[2] LEAD: oii! então, tenho 4 meninas trabalhando comigo aqui no salão
+
+mas a parte de agendamento e whatsapp fica tudo comigo... não aguento mais responder mensagem até de domingo 🫠
+    AGENTE: Passar o domingo respondendo mensagem e cuidando de agendamento cansa demais.
+    AGENTE: Pra ser bem transparente com você: a instalação de R$ 47 coloca um time de IA no seu Telegram pra te ajudar a organizar a rotina do salão, lembrar de tarefas, planejar o dia e escrever por você. Atender as clientes direto no seu WhatsApp é o Atendimento no WhatsApp (R$ 3.000), um produto separado que não vem nessa instalação de R$ 47.
+    AGENTE: Ter esse suporte no seu Telegram pra organizar o dia e tirar a cabeça da correria já te ajuda, ou o que você busca agora é só o atendimento automático para as suas clientes no WhatsApp?
+    [diretivas] registro:situacao=salão de beleza com 4 funcionárias, ela cuida do agendamento e atendimento; registro:dor="a parte de agendamento e whatsapp fica tudo comigo... não aguento mais responder mensagem até de domingo"; registro:etapa_spiced=I; registro:proximo_passo=responder se busca organização no Telegram ou atendimento no WhatsApp; registro:proximo_passo_em=2026-10-07
+
+[3] LEAD: ah poxa, achei que já respondia as clientes direto no whats 😕 3 mil fica pesado pra mim agora
+
+mas como funciona esse do telegram? ele me ajuda a responder mais rápido ou algo assim? não entendo muito dessas coisas rs
+    AGENTE: Ele funciona como um braço direito no seu Telegram: você manda áudio ou texto e ele te ajuda a redigir respostas rápidas pras clientes, organizar as tarefas das 4 meninas e lembrar dos seus compromissos.
+    AGENTE: Você não precisa entender nada de tecnologia nem instalar nada no computador. Depois de pronto, todo dia de manhã ele te manda a Pauta do dia com tudo organizado pra você não se perder na correria.
+    AGENTE: Ter essa ajuda pra desafogar a sua cabeça e organizar a rotina do salão faz sentido pra você hoje?
+    [diretivas] registro:etapa_spiced=I; registro:proximo_passo=responder se a organização no Telegram faz sentido; registro:proximo_passo_em=2026-10-07
+
+[4] LEAD: nossa, isso de me ajudar a organizar o dia e escrever as respostas seria ótimo mesmo
+
+como funciona pra colocar pra funcionar? eu só preciso pagar esses 47 ou tem mais alguma coisa? não entendo nada disso rs
+    AGENTE: Você não precisa entender nada de tecnologia nem mexer em nada técnico. Depois da compra, você só preenche 5 campos e em até 48 h o time te avisa "Pronto." no seu Telegram.
+    AGENTE: A instalação é R$ 47, pagamento único. Por fora ficam a VPS, cerca de R$ 119 por mês, e o Codex, cerca de R$ 100 por mês, pagos direto a eles, no seu nome.
+    [diretivas] registro:etapa_spiced=D; registro:proximo_passo=reagir ao preço e custos mensais; registro:proximo_passo_em=2026-10-07
+
+[5] LEAD: o que é essa vps? e esse codex? 🙈
+
+mas isso é caro? eu tenho que contratar tudo isso sozinha? não entendo nada dessas coisas rs
+    (revisor reescreveu: I1 e I2: enviou link antes de definir os pré-requisitos (D) e sem perguntar quando consegue contratar)
+    rascunho: A VPS é um computador na nuvem que fica ligado direto pro seu time rodar sem pesar no seu celular. E o Codex é a assinatura de inteligência artificial que faz o time pensar (o plano pago do ChatGPT). / Se você não tem o Codex, dá pra pegar a Conta do Gemini por R$ 100 uma vez, direto na compra da instalação. Assim, por mês fica só a VPS (cerca de R$ 119). Você não precisa entender de tecnologia pr
+    AGENTE: A VPS é um computador na nuvem que fica ligado direto pro seu time rodar sem pesar no seu celular (cerca de R$ 119 por mês, a referência é a KVM2 da Hostinger). E o Codex é a assinatura de inteligência artificial que faz o time pensar (o plano pago do ChatGPT, cerca de R$ 100 por mês).
+    AGENTE: Se você não tiver o Codex, dá pra pegar a Conta do Gemini por R$ 100 uma vez, direto na compra da instalação. Assim, por mês fica só a VPS. Você contrata a VPS direto no site deles, é bem simples e você não precisa entender de tecnologia.
+    AGENTE: Quando você consegue contratar a VPS pra gente dar esse passo?
+    [diretivas] registro:tem_vps=não; registro:tem_codex=não; registro:proximo_passo=conferir pré-requisitos na página; registro:proximo_passo_em=2026-10-07
+
+[6] LEAD: ah entendi melhor agora!
+
+acho que consigo contratar lá pra quinta-feira, depois que receber de uma cliente aqui do salão 🙏
+    AGENTE: Combinado! Faz total sentido esperar entrar esse valor.
+    AGENTE: O link pra você acessar na quinta é esse: https://instalador.talles.dev/antes
+    AGENTE: Fica super à vontade pra me chamar na quinta quando for fazer, ou se pintar qualquer dúvida até lá. Combinado assim?
+    [diretivas] registro:proximo_passo=contratar a VPS e comprar pelo link; registro:proximo_passo_em=2026-10-08
+
+[7] LEAD: combinado então! já salvei o link aqui
+
+na quinta te chamo assim que der tudo certo, muito obrigada! 🥰
+    (silêncio: nada enviado; fim da simulação)
+
+== registros ==
+{
+ "oferta": "instalador",
+ "etapa_spiced": "D",
+ "proximo_passo": "contratar a VPS e comprar pelo link",
+ "proximo_passo_em": "2026-10-08",
+ "situacao": "salão de beleza com 4 funcionárias, ela cuida do agendamento e atendimento",
+ "dor": "\"a parte de agendamento e whatsapp fica tudo comigo... não aguento mais responder mensagem até de domingo\"",
+ "tem_vps": "não",
+ "tem_codex": "não"
+}

@@ -1,0 +1,75 @@
+
+[1] LEAD: E aí! Sou o @marcos.contabil e quero o meu Time de IA instalado
+    AGENTE: Oi! Sou o agente do Talles. Bora colocar o seu time de IA pra rodar, @marcos.contabil.
+    AGENTE: Pra eu ver como fica no seu caso, como funciona a contabilidade hoje e quem toca a rotina com você?
+    [diretivas] registro:oferta=instalador; registro:etapa_spiced=S; registro:proximo_passo=responder sobre a rotina da contabilidade; registro:proximo_passo_em=2026-10-07
+
+[2] LEAD: Olá, boa tarde. Aqui no escritório em Belo Horizonte somos em três pessoas: eu, minha sócia e mais uma funcionária que nos ajuda no dia a dia com a rotina fiscal e contábil.
+
+Antes de qualquer coisa, eu queria tirar uma dúvida com você: eu preciso saber programar para usar isso? Confesso que não sou muito de tecnologia e fico com receio de ser algo complicado demais para a nossa realidade.
+    AGENTE: Não precisa saber nada de programação. Você não abre terminal nem instala nada, só preenche 5 campos.
+    AGENTE: O time chega pronto no seu Telegram e você conversa com ele como fala comigo aqui, em português normal.
+    AGENTE: Hoje, entre você, sua sócia e a funcionária, o que mais toma o seu tempo e trava o dia: responder cliente, cobrar documento ou organizar as demandas fiscais?
+    [diretivas] registro:situacao=escritório de contabilidade em BH com 3 pessoas, ele a sócia e uma funcionária; registro:etapa_spiced=P; registro:proximo_passo=responder o que mais toma tempo na rotina; registro:proximo_passo_em=2026-10-07
+
+[3] LEAD: Compreendo, fico mais tranquilo sabendo que é direto pelo Telegram. 
+
+Respondendo à sua pergunta, o que mais nos consome tempo hoje é responder clientes. Parece que toda semana são as mesmas dúvidas repetidas sobre prazos de guias e impostos, o que acaba interrompendo muito o nosso fluxo de trabalho. Além disso, eu ainda monto as propostas de honorários totalmente à mão para novos clientes, o que toma bastante tempo.
+
+Mas me diga uma coisa: esse sistema todo precisa rodar no meu computador? O meu computador precisa ficar ligado direto para funcionar?
+    AGENTE: Não precisa do seu computador ligado. Ele roda no seu próprio servidor na nuvem (a VPS), que fica no seu nome e funciona direto.
+    AGENTE: Sobre os clientes: se a ideia for a IA responder eles direto no WhatsApp, isso é o Atendimento no WhatsApp (R$ 3.000), que é um produto separado. A instalação coloca o time no seu Telegram pra te ajudar internamente, rascunhando as propostas de honorários e organizando as respostas do dia.
+    AGENTE: Pra tirar essa parte de montar propostas das suas mãos, você decide isso sozinho ou alinha com a sua sócia?
+    [diretivas] registro:dor="o que mais nos consome tempo hoje é responder clientes... e monto as propostas de honorários totalmente à mão para novos clientes"; registro:etapa_spiced=D; registro:proximo_passo=responder quem decide sobre a contratação; registro:proximo_passo_em=2026-10-07
+
+[4] LEAD: Entendi a diferença. Ajudar a rascunhar essas propostas e organizar as respostas do dia a dia já seria de grande ajuda para nós.
+
+Sobre a decisão, a palavra final acaba sendo minha, mas eu vou ver com a minha sócia antes de bater o martelo, pois qualquer mudança impacta o trabalho dela e da nossa funcionária também.
+
+E me tire mais uma dúvida importante: e se a gente instalar e por algum motivo não funcionar como esperado? Eu perco o dinheiro?
+    AGENTE: Não perde. Se o time não avisar "Pronto." no seu Telegram em até 48 h após o formulário completo, a instalação continua até rodar; se não ficar pronta, o valor da instalação é devolvido. Você também tem os 7 dias de garantia.
+    AGENTE: Sobre alinhar com a sua sócia: o que você acha que ela não aprovaria ou teria mais dúvida?
+    [diretivas] registro:decisao=palavra final dele, mas alinha com a sócia; registro:objecao="vou ver com a minha sócia antes de bater o martelo"; registro:ramo_objecao=outra_pessoa; registro:proximo_passo=responder o que a sócia não aprovaria; registro:proximo_passo_em=2026-10-07
+
+[5] LEAD: Acredito que a principal preocupação dela será com os custos contínuos e se realmente vai compensar no dia a dia. Ela é muito cuidadosa com os gastos do escritório e certamente vai me perguntar quanto isso tudo vai custar por mês para manter.
+
+Aproveitando, como funciona essa questão dos custos? Eu já tenho a assinatura do ChatGPT Plus hoje. Esse servidor VPS que você mencionou tem algum custo mensal? Preciso saber desses valores para poder apresentar tudo certinho para ela.
+    AGENTE: Sim, a VPS tem custo: fica cerca de R$ 119 por mês, paga direto à empresa de hospedagem (como a KVM2 da Hostinger), no nome de vocês. Como você já tem o ChatGPT Plus, a parte da IA já está resolvida.
+    AGENTE: A instalação é R$ 47, pagamento único. Por fora ficam a VPS, cerca de R$ 119 por mês, e o Codex, cerca de R$ 100 por mês, pagos direto a eles, no seu nome.
+    [diretivas] registro:tem_codex=sim; registro:proximo_passo=avaliar custos com a sócia; registro:proximo_passo_em=2026-10-07
+
+[6] LEAD: Entendi os valores. Então teríamos um custo fixo de cerca de R$ 220 por mês somando a VPS e esse Codex, além do pagamento único de R$ 47 da instalação.
+
+Só não me ficou claro o que seria esse Codex. É mais uma ferramenta que precisamos assinar para o time funcionar junto com o ChatGPT?
+
+Colocando na ponta do lápis, se isso de fato nos poupar tempo montando propostas e organizando as respostas fiscais, é um investimento bem razoável para o escritório. Como funciona o próximo passo?
+    AGENTE: O Codex é exatamente o plano pago do ChatGPT Plus que você já tem, então você não precisa pagar nada a mais além do que já paga nele. O caminho é por aqui https://instalador.talles.dev/antes
+    AGENTE: A página confere duas coisas antes de liberar a compra, a VPS e o Codex (ou a Conta do Gemini junto na compra).
+    AGENTE: Depois do pagamento você entra na área do cliente com o mesmo e-mail, preenche 5 campos, e em até 48 h o time te avisa "Pronto." no Telegram. Consegue fazer hoje, ou fica para amanhã?
+    [diretivas] registro:etapa_spiced=fechamento; registro:link_enviado=sim; registro:proximo_passo=comprar pelo link; registro:proximo_passo_em=2026-10-07
+
+[7] LEAD: Ah, perfeito! Se o Codex é o próprio ChatGPT Plus que eu já pago, fica ainda melhor. Menos uma despesa extra para cadastrar no cartão do escritório.
+
+Eu vou acessar esse link agora para ver como funciona o procedimento da VPS e fazer tudo com calma. Prefiro fazer hoje ainda para já deixar isso encaminhado e adiantar o nosso lado aqui no escritório. 
+
+Muito obrigado pelos esclarecimentos e pela atenção. Qualquer dúvida que eu tiver no preenchimento, eu volto a falar por aqui.
+    AGENTE: Combinado, Marcos! Fica à vontade para me chamar se tiver qualquer dúvida no caminho ou assim que preencher por lá.
+    [diretivas] registro:proximo_passo=comprar pelo link e preencher o formulário; registro:proximo_passo_em=2026-10-06
+
+[8] LEAD: Combinado! Um abraço e até logo.
+    (silêncio: nada enviado; fim da simulação)
+
+== registros ==
+{
+ "oferta": "instalador",
+ "etapa_spiced": "fechamento",
+ "proximo_passo": "comprar pelo link e preencher o formulário",
+ "proximo_passo_em": "2026-10-06",
+ "situacao": "escritório de contabilidade em BH com 3 pessoas, ele a sócia e uma funcionária",
+ "dor": "\"o que mais nos consome tempo hoje é responder clientes... e monto as propostas de honorários totalmente à mão para novos clientes\"",
+ "decisao": "palavra final dele, mas alinha com a sócia",
+ "objecao": "\"vou ver com a minha sócia antes de bater o martelo\"",
+ "ramo_objecao": "outra_pessoa",
+ "tem_codex": "sim",
+ "link_enviado": "sim"
+}

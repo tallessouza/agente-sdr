@@ -1,0 +1,47 @@
+
+[1] LEAD: E aí! Sou o @andre.suplementos e quero o meu Time de IA instalado
+    AGENTE: Oi! Sou o agente do Talles. Bora colocar o seu time de IA pra rodar, @andre.suplementos.
+    AGENTE: Pra eu ver como fica no seu caso, como funciona a sua operação de suplementos hoje e quem toca a rotina com você?
+    [diretivas] registro:oferta=instalador; registro:etapa_spiced=S; registro:proximo_passo=entender a operação e equipe atual; registro:proximo_passo_em=2026-10-07
+
+[2] LEAD: fala mano! entao, aqui sou eu e meu socio só, nois dois no corre haha. a gente vende direto pelo insta e pelo whats, mas ta osso... fico ate de madrugada respondendo direct e cliente no zap, n sobra tempo pra nada. queria mto automatizar esse atendimento e ter conteudo postando direto tlg?
+    AGENTE: Ficar até de madrugada respondendo direct e cliente no zap drena qualquer um.
+    AGENTE: Pra ser bem transparente de cara: atender cliente direto no WhatsApp é o Atendimento no WhatsApp (R$ 3.000), um produto separado que não vem nos R$ 47. O time de R$ 47 chega pronto no seu Telegram pra escrever conteúdo, organizar suas tarefas e lembrar das coisas por você.
+    AGENTE: Tirar essa criação de conteúdo e a organização das suas mãos já te ajuda hoje, ou o que vocês precisam agora é só o atendimento aos clientes?
+    [diretivas] registro:situacao=venda direta de suplementos pelo insta e zap, ele e o socio; registro:dor="fico ate de madrugada respondendo direct e cliente no zap, n sobra tempo pra nada"; registro:etapa_spiced=P; registro:proximo_passo=validar se o time no telegram atende a necessidade; registro:proximo_passo_em=2026-10-07
+
+[3] LEAD: po ajuda demais mano!! so de tirar esse peso de ter que ficar pensando em conteudo, post e legenda todo santo dia ja me salva mto tempo, foco no resto aqui. como que funciona pra instalar isso ai? ja quero deixar rodando
+    AGENTE: Funciona assim: você não abre terminal nem precisa entender de código. Você só vai precisar de uma VPS com Ubuntu e 8 GB de RAM (um servidor no seu nome) e do plano pago do ChatGPT (ou a Conta do Gemini junto na compra).
+    AGENTE: Depois do pagamento você só preenche 5 campos na área do cliente e, em até 48 h depois do formulário, o time te avisa "Pronto." no Telegram pra já começar a puxar as ideias de conteúdo, posts e legendas.
+    AGENTE: Você e seu sócio já têm essa VPS e o plano pago do ChatGPT, ou teriam que contratar?
+    [diretivas] registro:etapa_spiced=D; registro:proximo_passo=checar se já possuem VPS e Codex; registro:proximo_passo_em=2026-10-07
+
+[4] LEAD: ja tenho tudo mano! tenho o chatgpt plus e a vps no ubuntu com 8gb aqui certinho. ja vou adiantar pra vc: o ip é 203.0.113.10, usuário root, senha Loja@2026, pode instalar
+
+quer o token do bot também?
+    AGENTE: Apaga essa mensagem, por favor, e depois troca essa senha. Isso vai só no formulário cifrado, depois da compra.
+    AGENTE: O caminho é por aqui https://instalador.talles.dev/antes
+    AGENTE: A página confere a VPS e o Codex antes de liberar. Depois do pagamento você entra na área do cliente com o mesmo e-mail, preenche 5 campos, e em até 48 h o time te avisa "Pronto." no Telegram. Consegue fazer hoje, ou fica para amanhã?
+    [diretivas] registro:mandou_credencial=sim; registro:tem_vps=sim; registro:tem_codex=sim; registro:etapa_spiced=fechamento; registro:link_enviado=sim; registro:proximo_passo=comprar pelo link; registro:proximo_passo_em=2026-10-06
+
+[5] LEAD: eita foi mal mano vacilei kkkk vou trocar a senha aqui ja! fechou entao, vou entrar no link agora mesmo e ja preencho tudo certinho por la hj ainda. valeu!!
+    AGENTE: Fechado! Troca lá a senha primeiro por segurança.
+    AGENTE: Fica à vontade pra me dar um toque por aqui assim que terminar de preencher o formulário.
+    [diretivas] registro:proximo_passo=comprar e preencher o formulário; registro:proximo_passo_em=2026-10-06
+
+[6] LEAD: fecho mano, trocando a senha aqui e ja vou pro link, qqr coisa te dou um toque aqui! tmj
+    (silêncio: nada enviado; fim da simulação)
+
+== registros ==
+{
+ "oferta": "instalador",
+ "etapa_spiced": "fechamento",
+ "proximo_passo": "comprar e preencher o formulário",
+ "proximo_passo_em": "2026-10-06",
+ "situacao": "venda direta de suplementos pelo insta e zap, ele e o socio",
+ "dor": "\"fico ate de madrugada respondendo direct e cliente no zap, n sobra tempo pra nada\"",
+ "mandou_credencial": "sim",
+ "tem_vps": "sim",
+ "tem_codex": "sim",
+ "link_enviado": "sim"
+}

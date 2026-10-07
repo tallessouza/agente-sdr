@@ -1,0 +1,82 @@
+
+[1] LEAD: E aí! Sou o @carla.beauty e quero saber mais sobre o Raio-X
+    AGENTE: Oi, Carla! Sou o agente do Talles. Vi que você comentou no post sobre o Raio-X.
+    AGENTE: O que trava na sua operação quando você fica uma semana fora?
+    [diretivas] registro:oferta=raiox; registro:etapa_spiced=P; registro:proximo_passo=responder o que trava na operacao; registro:proximo_passo_em=2026-10-07
+
+[2] LEAD: nossa trava tudo kkkk
+
+se eu saio as vendas simplesmente despencam
+
+tenho 6 meninas atendendo no whats mas elas demoram muito pra responder e não fazem acompanhamento de nada... se eu não ficar em cima não sai venda
+    AGENTE: Ter que ficar em cima de 6 pessoas pro atendimento acontecer trava o crescimento, ainda mais tocando a loja e os lançamentos de make.
+    AGENTE: Pra você ter uma ideia desse tipo de fluxo, o Talles cuidou de um SaaS com 30 mil usuários e 18 mil agentes, que contactou 9 milhões de números de WhatsApp.
+    AGENTE: Você já tentou resolver isso com ferramenta ou com freela? O que aconteceu?
+    [diretivas] registro:dor="se eu saio as vendas simplesmente despencam, tenho 6 meninas atendendo no whats mas elas demoram muito pra responder e não fazem acompanhamento de nada"; registro:situacao=loja de beleza/make, 6 atendentes no WhatsApp; registro:etapa_spiced=S; registro:proximo_passo=responder se tentou ferramenta ou freela; registro:proximo_passo_em=2026-10-07
+
+[3] LEAD: nunca tentei ferramenta não, nem sei mexer direito nessas coisas pra ser sincera kkk
+
+aqui a gente usa só o whats normal no celular e no computador mesmo
+
+mas essas coisas que vc falou de saas e milhões parecem meio longe da minha realidade rs... isso funciona pra loja pequena igual a minha?
+    AGENTE: Funciona sim, Carla. O princípio é exatamente o mesmo: tirar da cabeça das meninas a obrigação de lembrar de responder e fazer o acompanhamento, colocando um fluxo organizado pra rodar junto com elas.
+    AGENTE: Pra eu entender o tamanho: hoje o negócio fatura mais perto de R$ 50 mil, de R$ 100 mil ou acima de R$ 300 mil por mês?
+    [diretivas] registro:etapa_spiced=I; registro:proximo_passo=responder faixa de faturamento; registro:proximo_passo_em=2026-10-07
+
+[4] LEAD: então, tá abaixo de 50 ainda...
+
+num mês muito bom a gente bate uns 35 mil, mas o caixa tá bem apertado ultimamente
+
+como funcionaria esse raio x pra mim?
+    AGENTE: Sendo bem transparente com você, Carla: com o faturamento abaixo de R$ 50 mil e o caixa mais apertado, o Raio-X não é o que resolve a sua operação agora.
+    AGENTE: Ele é desenhado para operações bem maiores, e colocar uma estrutura desse tamanho agora só pesaria mais no caixa da loja em vez de ajudar.
+    AGENTE: Faz sentido pra você segurar esse passo por enquanto?
+    [diretivas] registro:faturamento=abaixo de R$ 50 mil; registro:triagem=desqualificado; registro:motivo_desqualificacao=faturamento abaixo de 50k e caixa apertado; registro:desfecho=desqualificado; registro:proximo_passo=aguardar resposta sobre desqualificacao; registro:proximo_passo_em=2026-10-07
+
+[5] LEAD: nossa super agradeço a sinceridade de vdd! a maioria ia só tentar empurrar alguma coisa kkk
+
+faz total sentido segurar sim, não posso dar nenhum passo em falso agora
+
+mas o que vc me recomenda fazer com essa questão do atendimento? se eu conseguisse diminuir essa equipe já dava um alívio gigante no caixa
+    AGENTE: Fico feliz que veja assim, Carla. Transparência vem sempre primeiro por aqui.
+    AGENTE: Pro seu momento, o melhor primeiro passo sem gastar nada é padronizar 3 ou 4 respostas rápidas no próprio WhatsApp Business e uma rotina simples de acompanhamento pras meninas baterem todo dia.
+    AGENTE: Vocês já usam as respostas rápidas do WhatsApp hoje, ou cada uma escreve do próprio jeito?
+    [diretivas] registro:proximo_passo=responder sobre uso de respostas rapidas; registro:proximo_passo_em=2026-10-07
+
+[6] LEAD: cada uma escreve do jeito que quer kkk uma bagunça
+
+eu até tento falar pra elas mandarem certas mensagens mas ninguém segue direito
+
+essas respostas rápidas é aquilo que aperta a barra "/" né? vou tentar configurar isso hoje já!
+    AGENTE: É isso mesmo! Você digita a barra "/" e já puxa o texto padrão direto na conversa.
+    AGENTE: Cria 2 ou 3 modelos principais pras dúvidas mais comuns e pro acompanhamento do dia seguinte. Só isso já vai alinhar muito o time.
+    AGENTE: Consegue montar esses primeiros modelos ainda hoje?
+    [diretivas] registro:proximo_passo=montar primeiros modelos de respostas rapidas; registro:proximo_passo_em=2026-10-07
+
+[7] LEAD: consigo sim! vou sentar hoje a tarde e já deixar isso pronto
+
+muito obrigada pela ajuda de verdade, clareou bastante aqui 🙏
+
+assim que a loja der uma respirada e crescer mais eu procuro vcs pro raio x!
+    AGENTE: Combinado, Carla! Bom trabalho na organização dessas mensagens hoje.
+    AGENTE: Fica totalmente à vontade para me chamar por aqui quando a loja estiver no momento de dar esse próximo passo. Sucesso nas vendas!
+    [diretivas] registro:proximo_passo=montar primeiros modelos de respostas rapidas; registro:proximo_passo_em=2026-10-06
+
+[8] LEAD: muito obrigada!! sucesso pra vcs aí também ✨
+
+qualquer coisa chamo aqui sim, até mais!
+    (silêncio: nada enviado; fim da simulação)
+
+== registros ==
+{
+ "oferta": "raiox",
+ "etapa_spiced": "I",
+ "proximo_passo": "montar primeiros modelos de respostas rapidas",
+ "proximo_passo_em": "2026-10-06",
+ "dor": "\"se eu saio as vendas simplesmente despencam, tenho 6 meninas atendendo no whats mas elas demoram muito pra responder e não fazem acompanhamento de nada\"",
+ "situacao": "loja de beleza/make, 6 atendentes no WhatsApp",
+ "faturamento": "abaixo de R$ 50 mil",
+ "triagem": "desqualificado",
+ "motivo_desqualificacao": "faturamento abaixo de 50k e caixa apertado",
+ "desfecho": "desqualificado"
+}

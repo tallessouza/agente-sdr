@@ -1,0 +1,43 @@
+
+[1] LEAD: E aí! Sou o @rafael.fisio e quero o meu Time de IA instalado
+    AGENTE: Oi! Sou o agente do Talles. Bora colocar o seu time de IA pra rodar, @rafael.fisio.
+    AGENTE: Pra eu entender como fica no seu caso, o que você mais faz no dia a dia da fisioterapia e quem toca a rotina hoje: é só você ou tem equipe com você?
+    [diretivas] registro:oferta=instalador; registro:etapa_spiced=S; registro:proximo_passo=responder sobre a rotina e equipe; registro:proximo_passo_em=2026-10-07
+
+[2] LEAD: Tenho equipe, somos em 6 aqui. 3 fisios, 2 na recepção e eu.
+Eu atendo e toco a gestão. A recepção fica presa no WhatsApp confirmando consulta e tirando dúvida de convênio, aí à noite sobra tudo pra mim.
+Quanto é pra instalar?
+    AGENTE: Um detalhe importante antes: para atender paciente no WhatsApp é o Atendimento no WhatsApp (R$ 3.000), que é um produto separado. A instalação de R$ 47 coloca o time no seu Telegram para te ajudar a tocar a gestão, organizar as tarefas e te mandar a Pauta do dia.
+    AGENTE: A instalação é R$ 47, pagamento único. Por fora ficam a VPS, cerca de R$ 119 por mês, e o Codex, cerca de R$ 100 por mês, pagos direto a eles, no seu nome.
+    AGENTE: Você já tem a VPS e a assinatura do Codex (o plano pago do ChatGPT), ou precisaria contratar?
+    [diretivas] registro:situacao=clínica com 6 pessoas (3 fisios, 2 recepção e ele na gestão/atendimento); registro:dor="A recepção fica presa no WhatsApp confirmando consulta e tirando dúvida de convênio, aí à noite sobra tudo pra mim."; registro:perfil_raiox=sim; registro:etapa_spiced=D; registro:proximo_passo=responder sobre VPS e Codex; registro:proximo_passo_em=2026-10-07
+
+[3] LEAD: Já tenho os dois. Tenho uma VPS da Hostinger com Ubuntu que meu sobrinho contratou e já assino o ChatGPT Plus.
+Manda o link dos 47.
+    AGENTE: O caminho é por aqui https://instalador.talles.dev/antes
+    AGENTE: A página confere duas coisas antes de liberar a compra, a VPS e o Codex.
+    AGENTE: Depois do pagamento você entra na área do cliente com o mesmo e-mail, preenche 5 campos, e em até 48 h o time te avisa "Pronto." no Telegram. Consegue fazer hoje, ou fica para amanhã?
+    [diretivas] registro:tem_vps=sim; registro:tem_codex=sim; registro:etapa_spiced=fechamento; registro:link_enviado=sim; registro:proximo_passo=comprar pelo link; registro:proximo_passo_em=2026-10-07
+
+[4] LEAD: Comprei. O que vem agora?
+    (revisor reescreveu: I5: anuncia que vai chamar o Talles antes da compra registrada)
+    rascunho: Show! O primeiro passo agora é acessar a área do cliente com o mesmo e-mail da compra (vai chegar um código de 6 números), preencher o formulário de 5 campos e autorizar o Codex. Em até 48 h depois do envio, o time te avisa "Pronto." no Telegram. / Pelo tamanho da sua operação, o Talles vai querer olhar o seu caso de perto. Vou chamar ele por aqui.
+    AGENTE: Show! O primeiro passo agora é acessar a área do cliente com o mesmo e-mail da compra (vai chegar um código de 6 números), preencher o formulário de 5 campos e autorizar o Codex. Em até 48 h depois do envio, o time te avisa "Pronto." no Telegram. Já conseguiu acessar por aí?
+    [diretivas] registro:comprou=sim; registro:proximo_passo=preencher o formulário na área do cliente; registro:proximo_passo_em=2026-10-07; escalar:perfil para Raio-X=
+
+== escalou para o Talles; fim da simulação ==
+
+== registros ==
+{
+ "oferta": "instalador",
+ "etapa_spiced": "fechamento",
+ "proximo_passo": "preencher o formulário na área do cliente",
+ "proximo_passo_em": "2026-10-07",
+ "situacao": "clínica com 6 pessoas (3 fisios, 2 recepção e ele na gestão/atendimento)",
+ "dor": "\"A recepção fica presa no WhatsApp confirmando consulta e tirando dúvida de convênio, aí à noite sobra tudo pra mim.\"",
+ "perfil_raiox": "sim",
+ "tem_vps": "sim",
+ "tem_codex": "sim",
+ "link_enviado": "sim",
+ "comprou": "sim"
+}
