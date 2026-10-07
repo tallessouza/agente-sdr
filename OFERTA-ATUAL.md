@@ -103,3 +103,12 @@ O Raio-X é um degrau lá na frente do mesmo funil: um Hermes só, com as duas o
 - **Dois produtos diferentes de R$ 48.000:** a **implantação do Raio-X** (21 dias, 3 a 5 fluxos, com sustentação mensal de R$ 7-9 mil, como no SOUL antigo) é o passo seguinte de quem fez o Raio-X; **"Copiar a minha operação"** (R$ 48.000, com o Raio-X abatido) é outro produto. O agente nunca confunde os dois nem usa um nome pelo outro.
 - **Vídeos de como contratar VPS e Codex:** o Talles grava depois. A frase da /antes fica. Até existirem, o agente **não diz que há vídeo**; responde "como eu contrato?" com o caminho curto (VPS Ubuntu de 8 GB, ex. Hostinger; plano pago do ChatGPT Plus ou maior, ou a Conta do Gemini na compra) e passa ao Talles se a pessoa travar.
 - **Conta do Gemini:** ficam os dois caminhos, o bump no checkout da instalação e o link avulso (para quem já comprou e esqueceu do bump).
+
+### 9.2 Estado do funil na Kiwify (configurado na sessão 8277a4f1, 06/10 19h15; vence o §5 e o §8.5)
+
+- Checkout da instalação (R$ 47, ju44Xqc) com **um bump só: a Conta do Gemini**, que no checkout se chama "Assinatura Gemini One" (R$ 100, pagamento único). Os bumps de WhatsApp e de Acompanhamento quinzenal foram tirados.
+- Obrigado da instalação → /oferta/gerenciamento (Gestão do time: quinzenal R$ 150 kSJfoff, semanal R$ 450 jZRYPeP, diário R$ 1.300 974Qyx5) → /oferta/whatsapp (aceitou) ou /oferta/monitoramento (recusou); Monitoramento (R$ 150/mês, ATZrSym) → /oferta/whatsapp; WhatsApp (R$ 3.000, T1a5DUa) → /obrigado.
+- Upsell de 1 clique ainda não está no ar (tarefa W5): até lá, "Sim" abre um checkout novo.
+- O agente recuperador da Kiwify está ligado (carrinho abandonado, pagamento recusado, Pix não pago; até 30 min) com as regras desta seção 9.
+- O link avulso do Gemini (t8YPCFG) é só para quem já comprou a instalação sem o bump; a /antes o mostra só nesse caso.
+- Em aberto: preço do Time de agentes; pixel da Meta salvo no painel a confirmar; cupom de teste da sessão 8277a4f1 a desligar.

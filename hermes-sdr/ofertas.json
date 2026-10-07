@@ -7,7 +7,7 @@
     "cobranca": "pagamento único",
     "link_compra": "https://instalador.talles.dev/antes",
     "o_que_o_link_faz": "a página confere os pré-requisitos e só libera o checkout com os 2 checks",
-    "o_que_o_time_faz": "chega pronto no Telegram do dono; responde, escreve, organiza e lembra por ele; depois do \"Pronto.\" faz 15 perguntas e, no dia seguinte, manda a primeira Pauta do dia",
+    "o_que_o_time_faz": "chega pronto no Telegram do dono; conversa com ele, escreve, organiza e lembra por ele (não fala com os clientes dele); depois do \"Pronto.\" faz 15 perguntas e, no dia seguinte, manda a primeira Pauta do dia",
     "o_que_nao_faz": "não atende os clientes dele no WhatsApp: isso é o Atendimento no WhatsApp (R$ 3.000), produto separado, que não vem nos R$ 47",
     "pre_requisitos": {
       "vps": "VPS com Ubuntu e 8 GB de RAM, referência Hostinger KVM2, cerca de R$ 119/mês, paga direto à empresa da VPS, no nome dele. Obrigatória para todos.",
