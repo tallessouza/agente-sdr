@@ -14,7 +14,9 @@ Serviço FastAPI do SDR (Python 3.13, porta 8090). Estado SQLite fica em `/data`
 | `SDR_STEP_DUE_HOUR` | hora local em que vence um próximo passo datado sem hora (`proximo_passo_em = AAAA-MM-DD`) | `10` |
 | `SDR_STEP_ACTIVITY_DELAY` | segundos de espera para juntar `proximo_passo` e `proximo_passo_em` numa linha "📌 Próximo passo" no Chatwoot | `3` |
 
-Os fatos das ofertas não ficam aqui: chegam em `context.ofertas`, que a bridge lê de `hermes-sdr/ofertas.json`. `oferta.py` gera a lista de fatos para o revisor e faz a verificação automática do Instalador (preço inexistente, link fora da oferta, pedido de senha, promessa de faturamento, desconto, prazo de 24 h, nomes proibidos); o que sobrar depois do modelo vira `bloquear`.
+Os fatos das ofertas não ficam aqui: chegam em `context.ofertas`, que a bridge lê de `hermes-sdr/ofertas.json`. `oferta.py` gera a lista de fatos para o revisor e faz a verificação automática, nas duas ofertas e sem oferta (preço inexistente ou errado para o produto, link fora da oferta, pedido de senha ou dado do servidor, promessa de faturamento, desconto, promessa de contato, prazo abaixo de 48 h, vídeo, números de case do Raio-X fora do Raio-X, Raio-X antes da compra, instalação vendida como atendimento no WhatsApp, troca dos dois produtos de R$ 48.000, nomes e frases proibidos); o que sobrar depois do modelo vira `bloquear`. Um valor que o lead disse só passa como o custo DELE ("você paga R$ 2.000"), nunca como preço nosso.
+
+A lista de proibidos existe só em `oferta.py`: o revisor e o FUP a recebem por `{{PROIBIDOS}}`, e o SOUL é atualizado com `python oferta.py soul ../hermes-sdr/SOUL.md` (um teste falha se o SOUL divergir).
 
 Rotas: `GET /health` (sem autenticação), `POST /review`, `POST /events/exchange`, `POST /events/lead` e `POST /events/record` (Bearer obrigatório).
 

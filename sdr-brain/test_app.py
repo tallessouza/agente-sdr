@@ -382,8 +382,12 @@ class PromptsMatchTheOffer(unittest.TestCase):
         self.assertIn(OFERTAS["instalador"]["link_compra"], installer)
         for forbidden in ("24 h", "desconto", "Naia"):
             self.assertNotIn(forbidden, installer)
-        # The agent's own example lines pass the deterministic check.
-        self.assertEqual(app.oferta.check([installer], INSTALADOR, []), [])
+        # The agent's own example lines pass the deterministic check: before the
+        # purchase, everything up to DEPOIS DA COMPRA; after it, the whole path.
+        before = installer.split("DEPOIS DA COMPRA")[0]
+        self.assertEqual(app.oferta.check([before], INSTALADOR, []), [])
+        bought = {**INSTALADOR, "lead": {"oferta": "instalador", "registros": {"comprou": "sim"}}}
+        self.assertEqual(app.oferta.check([installer], bought, []), [])
 
     def test_prompts_carry_the_offer_rules(self):
         revisor = app.prompt("revisor.md")

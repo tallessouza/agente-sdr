@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import app
 import handover
@@ -151,8 +151,8 @@ class ContextTests(unittest.TestCase):
         self.assertIsNone(sdr.load_media("../../etc/passwd"))
 
     def test_origin_from_prefilled_instagram_text(self):
-        self.assertEqual(sdr.origin_from_text("Oi! Sou @loja.da_ana [R3]"), {"instagram": "@loja.da_ana", "peca": "R3", "canal": "instagram"})
-        self.assertEqual(sdr.origin_from_text("Oi! Sou @there [R2]"), {"peca": "R2", "canal": "instagram"})
+        self.assertEqual(sdr.origin_from_text("Oi! Sou @loja.da_ana [R3]"), {"instagram": "@loja.da_ana", "peca": "R3", "canal": "instagram", "oferta": "raiox"})
+        self.assertEqual(sdr.origin_from_text("Oi! Sou @there [R2]"), {"peca": "R2", "canal": "instagram", "oferta": "raiox"})
         self.assertIsNone(sdr.origin_from_text("bom dia, quanto custa?"))
 
     def test_offer_from_the_campaign_text(self):
@@ -273,6 +273,164 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(sdr.is_owner("5511@s.whatsapp.net"))
         with patch.object(sdr, "OWNER_IDS", set()):
             self.assertFalse(sdr.is_owner("556499425822@s.whatsapp.net"))
+
+
+class AuditFilterAndOfferTests(unittest.TestCase):
+    """Audit of SOUL v13 (06/10): the bridge filter and the offer of the first message."""
+
+    def test_offer_answers_about_the_leads_own_ai_pass(self):
+        allowed = [
+            "o Codex, que é o plano pago do ChatGPT (Plus ou maior), referência R$ 100 por mês. Conta grátis não funciona.",
+            "Sem Codex, dá para levar a Conta do Gemini junto na compra.",
+            "A conta grátis do ChatGPT não funciona, precisa ser a paga.",
+            "Serve se o seu ChatGPT for o Plus.",
+            "O ChatGPT Pro também serve.",
+            "quem levou a Conta do Gemini autoriza pela Conta do Gemini",
+            "autoriza pelo OAuth do Gemini",
+            "O Gemini Advanced serve no lugar?",
+            "Seu ChatGPT Plus precisa estar ativo.",
+            "Dá pra usar o seu Gemini? Só a Conta do Gemini levada na compra.",
+        ]
+        for text in allowed:
+            self.assertEqual(sdr.leaked_terms([text]), [], text)
+
+    def test_what_runs_the_agent_is_still_blocked(self):
+        for text, expected in [("Com 4 GB roda só o Hermes e mais 1 módulo.", ["hermes"]),
+                               ("Roda num Docker na sua VPS.", ["docker"]),
+                               ("Eu rodo no Gemini.", ["gemini"]),
+                               ("Quem levou o Gemini autoriza pelo próprio Gemini.", ["gemini"]),
+                               ("Eu rodo no ChatGPT Plus, igual ao seu.", ["modelo próprio"]),
+                               ("Por trás de mim tem um ChatGPT Pro.", ["modelo próprio"])]:
+            self.assertEqual(sdr.leaked_terms([text]), expected, text)
+
+    def test_what_the_person_wants_wins_over_the_word_she_cites(self):
+        cases = {
+            "Oi! Sou o @ana.studio e quero o meu Time de IA instalado": "instalador",
+            "E aí! Sou o @marina.escala e quero saber mais sobre o Raio-X": "raiox",
+            "Oi, vi o raio x e quero montar um time de IA na empresa": "instalador",
+            "não quero raio-x, quero o time": "instalador",
+            "vi o raio x e quero montar um time": "instalador",
+            "TIME": "instalador",
+            "quero o time instalado": "instalador",
+            "Oi! Sou @x [R5] quero o meu time de ia": "instalador",
+            "não quero o raio x": None,
+            "meu time é bom, quanto custa?": None,
+            "bom dia, quanto custa?": None,
+        }
+        for text, offer in cases.items():
+            self.assertEqual(sdr.offer_from_text(text), offer, text)
+
+    def test_old_reel_tag_is_still_the_raiox(self):
+        # "Oi! Sou @x [R<n>]" was the reel DM when the Raio-X was the only offer (HERMES_OPS_LOG 27/09).
+        self.assertEqual(sdr.origin_from_text("Oi! Sou @loja.da_ana [R3]")["oferta"], "raiox")
+        self.assertEqual(sdr.origin_from_text("Oi! Sou @x [R5] quero o meu time de ia")["oferta"], "instalador")
+
+
+class CredentialTests(unittest.IsolatedAsyncioTestCase):
+    """A password the lead pastes never reaches Chatwoot, Hermes or the brain."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        db = Path(self.tmp.name) / "bridge.db"
+        self.patches = [patch.object(sdr, "DB_PATH", db), patch.object(handover, "DB_PATH", db), patch.object(app, "DB_PATH", db)]
+        for p in self.patches:
+            p.start()
+        app.hermes_pending.clear(); app.hermes_tasks.clear()
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+        self.tmp.cleanup()
+
+    def test_redaction_rules(self):
+        cases = {
+            "a senha é Abc123! e o ip 203.0.113.7": "a senha é [credencial removida]! e o ip [credencial removida]",
+            "senha: banana": "senha: [credencial removida]",
+            "usuario root senha 9988": "usuario root senha [credencial removida]",
+            "token 123456789:AAH-abcdefghijklmnopqrstuvwxyz0123": "token [credencial removida]",
+            "minha senha do servidor é Xpto2026.": "minha senha do servidor é [credencial removida].",
+        }
+        for text, expected in cases.items():
+            self.assertEqual(sdr.redact_credentials(text), (expected, True), text)
+        for text in ("a senha é segura?", "onde eu coloco a senha?", "quanto custa a VPS de 8 GB?", "o login é pelo e-mail"):
+            self.assertEqual(sdr.redact_credentials(text), (text, False), text)
+
+    def test_webhook_stores_only_the_redacted_text(self):
+        payload = json.loads((Path(__file__).parent / "fixtures" / "message-text.json").read_text(encoding="utf-8"))
+        payload["data"]["key"]["id"] = "fixture-secret-001"
+        payload["data"]["message"]["conversation"] = "meu ip é 203.0.113.7 e a senha: Segredo#1"
+        chatwoot, queue = AsyncMock(return_value={"id": 1}), Mock()
+        from fastapi.testclient import TestClient
+        with patch.object(app, "ensure_conversation", AsyncMock(return_value=("src", 41))), \
+                patch.object(app, "add_chatwoot_message", chatwoot), patch.object(app, "queue_hermes_turn", queue), \
+                patch.object(app, "BRIDGE_WEBHOOK_TOKEN", ""):
+            self.assertEqual(TestClient(app.app).post("/evolution/webhook", json=payload).status_code, 200)
+        stored, queued = chatwoot.await_args.args[2], queue.call_args.args[1]
+        for text in (stored, queued):
+            self.assertNotIn("Segredo#1", text)
+            self.assertNotIn("203.0.113.7", text)
+            self.assertIn(sdr.CREDENTIAL_MARK, text)
+
+    async def test_turn_sends_the_notice_and_hermes_gets_the_mark(self):
+        jid = "5511@s.whatsapp.net"
+        app.hermes_pending[jid] = [("ok, a senha é " + sdr.CREDENTIAL_MARK + ", e quanto custa?", None, "src", 42, "m-1", None)]
+        ask, send, chatwoot, record = AsyncMock(return_value=""), AsyncMock(), AsyncMock(), AsyncMock()
+        with patch.object(app, "HERMES_MESSAGE_DEBOUNCE_SECONDS", 0), patch.object(handover, "paused", AsyncMock(return_value=False)), \
+                patch.object(app, "ask_hermes", ask), patch.object(app, "send_evolution", send), patch.object(app, "add_chatwoot_message", chatwoot), \
+                patch.object(app, "brain_event", AsyncMock()), patch.object(sdr, "record", record), \
+                patch.object(app, "record_offer_from_origin", AsyncMock()):
+            await app.hermes_batch_worker(jid)
+        self.assertEqual(send.await_args.args[1], sdr.CREDENTIAL_NOTICE)
+        record.assert_any_await(42, "mandou_credencial", "sim")
+        prompt, system = ask.await_args.args[0], ask.await_args.args[4]
+        self.assertIn(sdr.CREDENTIAL_MARK, prompt)
+        self.assertIn("credencial_removida", system)
+
+    async def test_audio_transcript_with_a_password_is_redacted_too(self):
+        jid = "5512@s.whatsapp.net"
+        app.hermes_pending[jid] = [("", [(b"ogg", "audio/ogg", "a.ogg")], "src", 43, "m-2", None)]
+        ask = AsyncMock(return_value="")
+        with patch.object(app, "HERMES_MESSAGE_DEBOUNCE_SECONDS", 0), patch.object(handover, "paused", AsyncMock(return_value=False)), \
+                patch.object(app, "transcribe_audio_media", AsyncMock(return_value=["a senha é Casa2026 tá"])), \
+                patch.object(app, "ask_hermes", ask), patch.object(app, "send_evolution", AsyncMock()), patch.object(app, "add_chatwoot_message", AsyncMock()), \
+                patch.object(app, "brain_event", AsyncMock()), patch.object(sdr, "record", AsyncMock()), \
+                patch.object(app, "record_offer_from_origin", AsyncMock()):
+            await app.hermes_batch_worker(jid)
+        self.assertNotIn("Casa2026", ask.await_args.args[0])
+
+
+class ProfileEscalationTests(unittest.TestCase):
+    """Installer lead with the Raio-X profile: record it and keep selling until the purchase."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.patch = patch.object(sdr, "DB_PATH", Path(self.tmp.name) / "bridge.db")
+        self.patch.start()
+        sdr.remember_lead(51, "55@s.whatsapp.net", "Oi! Sou o @ana e quero o meu Time de IA instalado")
+
+    def tearDown(self):
+        self.patch.stop()
+        self.tmp.cleanup()
+
+    def held(self, last_message="tenho 12 pessoas e faturo uns 300 mil"):
+        parts = ["Com 12 pessoas, o time tira bastante coisa das suas mãos.", "Vou chamar o Talles por aqui."]
+        directives = [{"type": "escalar", "motivo": "perfil para Raio-X", "frase": last_message}]
+        return app.hold_profile_escalation(51, parts, directives, last_message)
+
+    def test_before_the_purchase_the_profile_is_recorded_not_escalated(self):
+        parts, directives = self.held()
+        self.assertEqual(parts, ["Com 12 pessoas, o time tira bastante coisa das suas mãos."])
+        self.assertEqual(directives, [{"type": "registro", "campo": "perfil_raiox", "valor": "sim"}])
+
+    def test_a_blocked_reply_that_cites_the_raiox_still_escalates(self):
+        directives = [{"type": "escalar", "motivo": "verificação automática: Raio-X ou Copiar a minha operação antes da compra da instalação", "frase": "x"}]
+        self.assertEqual(app.hold_profile_escalation(51, [sdr.FALLBACK_REPLY], directives, "x"), ([sdr.FALLBACK_REPLY], directives))
+
+    def test_after_the_purchase_or_when_he_asks_it_escalates(self):
+        self.assertEqual(self.held("quero falar com o Talles sobre o raio-x")[1][0]["type"], "escalar")
+        with sdr.connect() as c:
+            c.execute("INSERT INTO sdr_records VALUES (?,?,?,?)", (51, "comprou", "sim", 1.0))
+        self.assertEqual(self.held()[1][0]["type"], "escalar")
 
 
 if __name__ == "__main__":

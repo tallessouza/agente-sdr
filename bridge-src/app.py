@@ -897,6 +897,48 @@ async def review_reply(jid: str, conversation_id: int, last_message: str, parts:
     return parts, directives
 
 
+async def send_credential_notice(jid: str, source_id: str, conversation_id: int) -> bool:
+    """The standard notice for a pasted credential, sent by the bridge itself.
+
+    The secret was already replaced in everything the agent, the brain and
+    Chatwoot see; WhatsApp keeps the lead's copy, so he is asked to delete it.
+    """
+    try:
+        await send_evolution(jid_number(jid), sdr.CREDENTIAL_NOTICE)
+        await add_chatwoot_message(source_id, conversation_id, sdr.CREDENTIAL_NOTICE, private=False, outgoing=True, suppress_evolution=True)
+        sdr.touch_activity(conversation_id, agent=True)
+        await sdr.record(conversation_id, "mandou_credencial", "sim")
+        fire_and_forget(brain_event("/events/record", {"conversation_id": conversation_id, "campo": "mandou_credencial", "valor": "sim", "ts": time.time()}))
+        return True
+    except Exception:
+        logger.exception("Credential notice failed for conversation=%s", conversation_id)
+        return False
+
+
+# Before the purchase, a lead with the profile for the Raio-X is recorded and
+# the sale goes on; only after it (or when he asks) the Talles is called.
+# Only the agent's own "[[ESCALAR: perfil para Raio-X | …]]": a block by the
+# reviewer may cite the Raio-X in its motivo and must still reach a person.
+PROFILE_ESCALATION_RE = re.compile(r"^\s*perfil\b", re.I)
+ASKED_FOR_TALLES_RE = re.compile(r"raio[\s-]?x|copiar a minha opera|humano|\bfalar com (?:o talles|uma pessoa|algu[eé]m|voc[eê]s)|atendente", re.I)
+ANNOUNCES_TALLES_RE = re.compile(r"\b(?:vou chamar|chamo|vou passar|passo)\b[^.!?\n]{0,30}\b(?:talles|ele)\b", re.I)
+
+
+def hold_profile_escalation(conversation_id: int, parts: list[str], directives: list[dict[str, Any]], last_message: str) -> tuple[list[str], list[dict[str, Any]]]:
+    escalation = next((d for d in directives if d["type"] == "escalar"), None)
+    if not escalation or not PROFILE_ESCALATION_RE.search(escalation.get("motivo", "")) or ASKED_FOR_TALLES_RE.search(last_message or ""):
+        return parts, directives
+    state = sdr.lead_state(conversation_id)
+    bought = sdr._fold(str((state.get("registros") or {}).get("comprou") or "")).strip() == "sim"
+    if state.get("oferta") != "instalador" or bought:
+        return parts, directives
+    kept = [part for part in parts if not ANNOUNCES_TALLES_RE.search(part)]
+    if not kept:
+        return parts, directives  # nothing else to say: a person takes it, as the agent announced
+    logger.info("SDR profile escalation held until the purchase conversation=%s", conversation_id)
+    return kept, [d for d in directives if d is not escalation] + [{"type": "registro", "campo": "perfil_raiox", "valor": "sim"}]
+
+
 def lead_interrupted(jid: str) -> bool:
     """The lead wrote again while this reply was being prepared or sent."""
     return bool(hermes_pending.get(jid))
@@ -914,6 +956,7 @@ async def deliver_agent_reply(jid: str, source_id: str, conversation_id: int, re
     draft = list(parts)
     if parts:
         parts, directives = await review_reply(jid, conversation_id, last_message, parts, directives)
+    parts, directives = hold_profile_escalation(conversation_id, parts, directives, last_message)
     leaks = sdr.leaked_terms(parts)
     if leaks:
         logger.warning("SDR guardrail blocked reply conversation=%s terms=%s", conversation_id, leaks)
@@ -999,6 +1042,8 @@ async def hermes_batch_worker(jid: str) -> None:
                         media = await recent_chatwoot_media(conversation_id)
                 if not combined and media:
                     combined = "[mídia recebida]"
+                # Also covers a password said in an audio or written in a document.
+                combined, secret = sdr.redact_credentials(combined)
                 logger.info("Hermes batch jid=%s messages=%d media=%d structured_events=%d history_media=%s", jid, len(batch), len(media), len(structured_events), bool(media and not any(item for _text, item, _source, _conversation, _external_id, _event in batch)))
                 try:
                     if await handover.paused(conversation_id):
@@ -1014,8 +1059,9 @@ async def hermes_batch_worker(jid: str) -> None:
                         origin = sdr.lead_state(conversation_id).get("origem")
                         await record_offer_from_origin(conversation_id, origin)
                         fire_and_forget(brain_event("/events/lead", {"conversation_id":conversation_id,"jid":jid,"origin":origin,"first_message":combined,"ts":time.time()}))
+                    notice_sent = await send_credential_notice(jid, source_id, conversation_id) if secret else False
                     guidance = sdr.pending_guidance(conversation_id)
-                    reply = await ask_hermes(prompt, HERMES_SESSION_PREFIX + jid + sdr.session_suffix(jid), media, structured_events, sdr.trusted_context(conversation_id, guidance))
+                    reply = await ask_hermes(prompt, HERMES_SESSION_PREFIX + jid + sdr.session_suffix(jid), media, structured_events, sdr.trusted_context(conversation_id, guidance, credential_notice_sent=notice_sent))
                     if await handover.paused(conversation_id) or version != handover.revision(conversation_id):
                         handover.record(conversation_id, uuid.uuid4().hex, "cliente", combined)
                         continue
@@ -1481,6 +1527,10 @@ async def evolution_webhook(request: Request) -> dict[str, bool]:
     quoted_id, quoted_text, quoted_participant = quoted_context(message or data)
     if quoted_id and quoted_text:
         content = f'[Respondendo à mensagem de {quoted_participant or "contato"}: "{quoted_text}"]\n\n{content}'
+    if incoming:
+        # A password or token the lead pasted stops here: Chatwoot, Hermes and
+        # the brain only ever see the mark (the batch worker sends the notice).
+        content, _secret = sdr.redact_credentials(content)
     media = media_info(message or data)
     hermes_media = ([media] if media else []) + quoted_media_from_cache(message or data, quoted_id)
     if state_event:

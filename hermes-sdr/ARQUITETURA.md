@@ -79,7 +79,7 @@ Na `ai_stack`, use sempre o nome completo do serviço (`chatwoot_postgres`,
   |---|---|
   | `agora` | Hora de Brasília |
   | `capacidade` | Lida de `capacidade.json`; vira `desatualizado` depois de `SDR_CAPACITY_MAX_AGE_DAYS=7` |
-  | `oferta` | `instalador` ou `raiox`: o último `[[REGISTRO: oferta]]` ou, sem ele, a campanha do texto pré-preenchido (`origin_from_text`: "Time de IA" → instalador, "Raio-X" → raiox). Ausente: o agente descobre |
+  | `oferta` | `instalador` ou `raiox`: o último `[[REGISTRO: oferta]]` ou, sem ele, a campanha do texto pré-preenchido (`origin_from_text`: "Time de IA" ou "quero/montar um time" → instalador, e isso vence uma citação do Raio-X; "Raio-X" não negado → raiox; o formato antigo "@x [R<n>]" → raiox). Ausente: o agente começa pelo Instalador |
   | `ofertas` | Lido de `ofertas.json` (preços, links, prazos, garantia de cada oferta); `{"status": "desconhecido"}` se faltar |
   | `fotos_aprovadas` | De `midia/descricoes.json` |
   | `lead` | Origem (com `oferta`), registros, `oferta`, `proximo_passo` (`{texto, ate}`) e `ficha` |
@@ -121,9 +121,16 @@ A bridge interpreta as diretivas e as remove antes do envio. Qualquer
 
 ## Bridge: o caminho de uma mensagem
 
+0. **Credencial:** senha, token, IP ou chave que o lead cola vira
+   `[credencial removida]` antes do Chatwoot, do Hermes e do brain
+   (`sdr.redact_credentials`; o brain repete a regra no que lê do Chatwoot).
+   No turno, a bridge manda ela mesma o aviso padrão (`SDR_CREDENTIAL_NOTICE`),
+   registra `mandou_credencial = sim` e avisa o Hermes por
+   `credencial_removida` no contexto. A cópia no WhatsApp do lead não dá para
+   apagar.
 1. **Acúmulo:** junta as mensagens do lead por 10 s
    (`HERMES_MESSAGE_DEBOUNCE_SECONDS`). Áudio é transcrito (faster-whisper) e
-   documento vira texto ou OCR.
+   documento vira texto ou OCR (a regra da credencial vale também aí).
 2. **Chegada do lead:** cancela os toques pendentes do lead e atualiza
    `last_lead_ts`. Na primeira mensagem, manda `/events/lead` ao brain.
 3. **Chamada ao Hermes:** monta a mensagem de sistema e chama o Hermes.
@@ -135,8 +142,12 @@ A bridge interpreta as diretivas e as remove antes do envio. Qualquer
 6. **Guardrail determinístico:** termos da stack, `[[`, caminhos → não envia,
    manda a resposta-padrão e escala. Os nomes de produto que a oferta exige
    (`SDR_OFFER_PHRASES`: "Conta do Gemini", "plano pago do ChatGPT",
-   "ChatGPT Plus"…) saem do texto antes da conferência; "gemini" ou
-   "chatgpt" soltos continuam barrados.
+   "ChatGPT Plus"/"Pro", "seu ChatGPT", "conta grátis do ChatGPT", "o seu
+   Gemini", "Gemini Advanced"…) saem do texto antes da conferência;
+   "gemini" ou "chatgpt" soltos continuam barrados, e o agente dizer o que
+   roda ele ("eu rodo no ChatGPT Plus") é barrado como "modelo próprio".
+   Antes dele, uma escalação "perfil para Raio-X" de lead do Instalador sem
+   `comprou = sim` vira o registro `perfil_raiox = sim` (a venda segue).
 7. **Sem travessão nem dois-pontos conectivo** (`sdr.plain_style`, também
    nos toques):
    - O travessão entre frases vira vírgula; hífen dentro de palavra fica.

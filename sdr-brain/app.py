@@ -55,8 +55,11 @@ last_step_line: dict[int, str] = {}
 
 
 def prompt(name: str) -> str:
-    """Read a bundled prompt on every request, allowing safe prompt updates."""
-    return (BASE_DIR / "prompts" / name).read_text(encoding="utf-8")
+    """Read a bundled prompt on every request, allowing safe prompt updates.
+
+    `{{PROIBIDOS}}` is filled from oferta.py, the only copy of the forbidden list.
+    """
+    return (BASE_DIR / "prompts" / name).read_text(encoding="utf-8").replace("{{PROIBIDOS}}", oferta.forbidden_list())
 
 
 def connection() -> sqlite3.Connection:
@@ -198,6 +201,8 @@ def compact_transcript(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if item.get("private") or item.get("message_type") not in authors:
             continue
         text = (item.get("content") or "").strip()
+        if authors[item["message_type"]] == "lead":
+            text = oferta.redact_credentials(text)[0]  # the bridge already does it; older messages may not be
         if not text and item.get("attachments"):
             text = "[anexo]"
         if not text:
@@ -217,6 +222,17 @@ async def bridge_post(path: str, payload: dict[str, Any]) -> None:
         LOGGER.warning("Bridge POST %s failed: %s", path, exc)
 
 
+PROFILE_GUIDANCE = "registre perfil_raiox = sim e siga a venda da instalação; o Talles entra depois da compra registrada"
+
+
+def profile_too_early(spiced: dict[str, Any], result: dict[str, Any], payload: dict[str, Any]) -> bool:
+    """Installer lead with the Raio-X profile, before the purchase: record it, keep selling."""
+    motivo = oferta.fold(str(result.get("motivo", "")))
+    asked = re.search(r"raio[\s-]?x|copiar a minha opera|humano|\bfalar com (?:o talles|uma pessoa|alguem|voces)|atendente", oferta.fold(str(payload.get("lead_message", ""))))
+    return (spiced.get("oferta") == "instalador" and oferta.fold(str(spiced.get("comprou") or "")).strip() != "sim"
+            and "perfil" in motivo and not asked)
+
+
 async def supervisor(payload: dict[str, Any]) -> None:
     cid = int(payload["conversation_id"])
     if cid in supervisor_running:
@@ -229,6 +245,8 @@ async def supervisor(payload: dict[str, Any]) -> None:
         result = await ask_llm(prompt("supervisor.md") + "\nCONTEXTO:\n" + json.dumps({"evento": payload, "spiced": spiced, "transcript": transcript}, ensure_ascii=False))
         if not isinstance(result, dict):
             return
+        if result.get("escalate") and profile_too_early(spiced, result, payload):
+            result = {"guidance": PROFILE_GUIDANCE, "escalate": False}
         if result.get("guidance"):
             await bridge_post("/sdr/guidance", {"conversation_id": cid, "text": str(result["guidance"])[:500]})
             await crm.activity(cid, "🧭 Orientação para o próximo turno: " + str(result["guidance"])[:500])
@@ -658,6 +676,10 @@ async def run_review(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(transcript, list):
         transcript = await chatwoot_messages(int(conversation_id)) if isinstance(conversation_id, int) else []
     context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+    recorded = next((str(d.get("valor", "")).strip().lower() for d in payload.get("directives") or []
+                     if isinstance(d, dict) and d.get("type") == "registro" and d.get("campo") == "oferta"), None)
+    if not oferta.current_offer(context) and recorded in oferta.OFFERS:
+        context = {**context, "oferta": recorded}  # the draft itself discovered the offer
     draft_parts = [str(part) for part in draft] if isinstance(draft, list) else []
     lead_texts = [str(payload.get("lead_message") or "")] + [str(row.get("texto", "")) for row in transcript if isinstance(row, dict) and row.get("autor") == "lead"]
     issues = oferta.check(draft_parts, context, lead_texts)
