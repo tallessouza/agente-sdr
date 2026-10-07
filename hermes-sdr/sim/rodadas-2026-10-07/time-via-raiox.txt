@@ -1,0 +1,51 @@
+
+[1] LEAD: E aí! Sou o @luana.conteudo e quero saber mais sobre o Raio-X
+    AGENTE: Oi! Sou o agente do Talles.
+    AGENTE: O que trava na sua operação quando você fica uma semana fora?
+    [diretivas] registro:oferta=raiox; registro:instagram=@luana.conteudo; registro:etapa_spiced=P; registro:proximo_passo=responder o que trava na operação; registro:proximo_passo_em=2026-10-07
+
+[2] LEAD: Opa, oi! Na verdade eu comentei TIME lá no reel e mandei essa mensagem pronta sem ver haha. 
+
+Eu quero o time de IA instalado mesmo, não é o Raio-X não. Tem alguma página pra eu já comprar?
+    AGENTE: Sem problemas, vamos focar no time de IA então!
+    AGENTE: Tem sim, a página confere os pré-requisitos (a VPS e o Codex) antes de liberar a compra.
+    AGENTE: Pra eu entender como o time entra no seu caso, @luana.conteudo: o que você faz hoje e o que mais toma o seu tempo na rotina?
+    [diretivas] registro:oferta=instalador; registro:etapa_spiced=S; registro:proximo_passo=responder o que faz e o que toma tempo; registro:proximo_passo_em=2026-10-07
+
+[3] LEAD: Eu sou social media, trabalho sozinha atendendo 6 clientes. O que mais me toma tempo disparado é ficar escrevendo legenda, criando roteiro de vídeo e organizando o cronograma de posts de todo mundo. 
+
+Mas o que é essa VPS aí? Não sei o que é não haha. E vi no reel que dava pra pegar com a conta do Gemini junto, né? Eu não tenho o ChatGPT pago.
+    AGENTE: A VPS é um servidor na nuvem pro time rodar direto, sem depender de computador ligado. A referência é a KVM2 da Hostinger (com Ubuntu e 8 GB de RAM), paga direto a eles no seu nome. E a Conta do Gemini dá pra levar direto na compra sim por R$ 100, taxa única, que substitui o Codex.
+    AGENTE: Com o time no seu Telegram, ele assume exatamente essa parte de escrever legenda, criar roteiro e organizar os cronogramas dos seus 6 clientes. Você não abre terminal nem aprende nada técnico: preenche 5 campos, e se em até 48 h depois do formulário o time não avisar "Pronto.", a instalação continua até ficar pronta ou devolve o valor da instalação.
+    AGENTE: A instalação é R$ 47, pagamento único, e a Conta do Gemini, R$ 100, uma vez, na mesma compra. Por mês fica só a VPS, cerca de R$ 119, paga direto a ela, no seu nome.
+    [diretivas] registro:situacao=social media, sozinha, atende 6 clientes; registro:dor="escrevendo legenda, criando roteiro de vídeo e organizando o cronograma de posts de todo mundo"; registro:tem_vps=não; registro:tem_codex=não; registro:etapa_spiced=D; registro:proximo_passo=reagir ao preço e pré-requisitos; registro:proximo_passo_em=2026-10-07
+
+[4] LEAD: Ah entendi! Achei super de boa o valor, vai me salvar demais com esses 6 clientes. 
+
+Me manda o link então pra eu já fechar a instalação com a conta do Gemini junto!
+    AGENTE: O caminho é por aqui https://instalador.talles.dev/antes
+    AGENTE: A página confere duas coisas antes de liberar a compra, a VPS e o Codex (ou a Conta do Gemini junto na compra).
+    AGENTE: Depois do pagamento você entra na área do cliente com o mesmo e-mail, preenche 5 campos, e em até 48 h o time te avisa "Pronto." no Telegram. Consegue fazer hoje, ou fica para amanhã?
+    [diretivas] registro:etapa_spiced=fechamento; registro:link_enviado=sim; registro:proximo_passo=comprar pelo link; registro:proximo_passo_em=2026-10-07
+
+[5] LEAD: Vou fazer agora mesmo! Já tô abrindo o link aqui pra resolver isso. Valeu!!
+    AGENTE: Maravilha! Fica à vontade pra me chamar se travar em algum passo.
+    AGENTE: Assim que concluir a compra e preencher os 5 campos na área do cliente, me dá um toque por aqui!
+    [diretivas] registro:proximo_passo=comprar e preencher o formulário; registro:proximo_passo_em=2026-10-07
+
+[6] LEAD: Combinado! Já tô fazendo aqui e te aviso assim que terminar tudo. Valeu!
+    (silêncio: nada enviado; fim da simulação)
+
+== registros ==
+{
+ "oferta": "instalador",
+ "instagram": "@luana.conteudo",
+ "etapa_spiced": "fechamento",
+ "proximo_passo": "comprar e preencher o formulário",
+ "proximo_passo_em": "2026-10-07",
+ "situacao": "social media, sozinha, atende 6 clientes",
+ "dor": "\"escrevendo legenda, criando roteiro de vídeo e organizando o cronograma de posts de todo mundo\"",
+ "tem_vps": "não",
+ "tem_codex": "não",
+ "link_enviado": "sim"
+}
