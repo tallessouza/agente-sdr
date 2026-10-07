@@ -70,6 +70,9 @@ MEDIA_DIR = DB_PATH.parent / "media"
 app = FastAPI(title="Evolution Go ↔ Chatwoot bridge")
 logger = logging.getLogger("bridge")
 conversation_lock = asyncio.Lock()
+HERMES_MAX_CONCURRENCY = max(1, int(os.getenv("HERMES_MAX_CONCURRENCY", "8")))
+HERMES_429_RETRY_SECONDS = float(os.getenv("HERMES_429_RETRY_SECONDS", "180"))
+hermes_slots = asyncio.Semaphore(HERMES_MAX_CONCURRENCY)
 hermes_pending: dict[str, list[tuple[str, list[tuple[bytes, str, str]] | None, str, int, str, dict[str, Any] | None]]] = defaultdict(list)
 hermes_tasks: dict[str, asyncio.Task] = {}
 _stt_model: Any = None
@@ -786,10 +789,26 @@ async def ask_hermes(content: str, session: str, media: list[tuple[bytes, str, s
             message_content = list(message_content) + [{"type": "text", "text": marker}]
         body["metadata"] = {"bridge_structured_events": structured_events}
         body["messages"][-1]["content"] = message_content
-    async with httpx.AsyncClient(timeout=180) as client:
-        r = await client.post(f"{HERMES_URL}/chat/completions", headers=headers, json=body)
-        r.raise_for_status()
-        data = r.json()
+    # Fila (07/10): no máximo HERMES_MAX_CONCURRENCY turnos ao mesmo tempo; o resto espera a vez.
+    # Se mesmo assim vier 429 (limite de execuções do Hermes), espera e tenta de novo, sem perder a mensagem.
+    deadline = time.monotonic() + HERMES_429_RETRY_SECONDS
+    delay = 1.0
+    async with hermes_slots:
+        async with httpx.AsyncClient(timeout=180) as client:
+            while True:
+                r = await client.post(f"{HERMES_URL}/chat/completions", headers=headers, json=body)
+                if getattr(r, "status_code", 200) == 429 and time.monotonic() < deadline:
+                    try:
+                        wait = float(r.headers.get("Retry-After") or delay)
+                    except ValueError:
+                        wait = delay
+                    logger.warning("Hermes at its concurrent-run cap (429); retrying in %.1fs session=%s", wait, session)
+                    await asyncio.sleep(min(max(wait, 0.5), 10.0))
+                    delay = min(delay * 2, 10.0)
+                    continue
+                r.raise_for_status()
+                data = r.json()
+                break
     return data.get("choices", [{}])[0].get("message", {}).get("content", "")
 
 
