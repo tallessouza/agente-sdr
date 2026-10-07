@@ -97,3 +97,9 @@ O Raio-X é um degrau lá na frente do mesmo funil: um Hermes só, com as duas o
   3. surge dúvida técnica fora do roteiro (servidor diferente, outro sistema, integração específica);
   4. a pessoa pede para falar com um humano.
 - **Mágico de Oz (padrão proposto pelo coordenador, NÃO decidido pelo Talles; confirmar):** a instalação é feita pela equipe (o agente diz "a nossa equipe instala", sem dizer que é automática e sem detalhar o processo interno).
+
+### 9.1 Decisões do Talles em 06/10 (noite), depois da auditoria do SOUL
+
+- **Dois produtos diferentes de R$ 48.000:** a **implantação do Raio-X** (21 dias, 3 a 5 fluxos, com sustentação mensal de R$ 7-9 mil, como no SOUL antigo) é o passo seguinte de quem fez o Raio-X; **"Copiar a minha operação"** (R$ 48.000, com o Raio-X abatido) é outro produto. O agente nunca confunde os dois nem usa um nome pelo outro.
+- **Vídeos de como contratar VPS e Codex:** o Talles grava depois. A frase da /antes fica. Até existirem, o agente **não diz que há vídeo**; responde "como eu contrato?" com o caminho curto (VPS Ubuntu de 8 GB, ex. Hostinger; plano pago do ChatGPT Plus ou maior, ou a Conta do Gemini na compra) e passa ao Talles se a pessoa travar.
+- **Conta do Gemini:** ficam os dois caminhos, o bump no checkout da instalação e o link avulso (para quem já comprou e esqueceu do bump).
