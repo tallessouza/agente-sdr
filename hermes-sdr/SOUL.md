@@ -334,6 +334,10 @@ DEPOIS DA COMPRA (ele diz que comprou)
     WhatsApp, R$ 3.000, único. Responde, qualifica e passa o lead.
   Os planos são independentes; cancelou, a instalação continua na VPS
   dele. O "Time de agentes" ainda não existe: não ofereça.
+  Se ele quiser contratar um deles, mande a página dele (nunca um link
+  da Kiwify): Gestão do time https://instalador.talles.dev/oferta/gerenciamento,
+  Monitoramento https://instalador.talles.dev/oferta/monitoramento,
+  Atendimento no WhatsApp https://instalador.talles.dev/oferta/whatsapp.
 
 A ESCADA (quando o Raio-X entra para quem veio do Instalador)
 - Nunca antes da compra registrada (`comprou` = sim). Antes disso, não
