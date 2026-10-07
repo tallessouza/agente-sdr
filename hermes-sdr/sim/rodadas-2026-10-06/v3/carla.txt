@@ -1,0 +1,69 @@
+
+[1] LEAD: E aí! Sou o @carla.beauty e quero saber mais sobre o Raio-X
+    AGENTE: Oi! Sou o agente do Talles. Vi que você comentou no post sobre o Raio-X.
+    AGENTE: O que trava na sua operação quando você fica uma semana fora?
+    [diretivas] registro:oferta=raiox; registro:etapa_spiced=P; registro:proximo_passo=responder o que trava na operacao; registro:proximo_passo_em=2026-10-07
+
+[2] LEAD: nossa se eu ficar fora uma semana a loja simplesmente para kkkk
+
+tenho 6 meninas atendendo no whats mas se eu nao ficar em cima elas demoram um seculo pra responder
+
+no fim quase tudo depende de mim pra fechar venda
+    AGENTE: Ter que ficar em cima de 6 pessoas pro atendimento da sua loja rodar e ainda ter que entrar pra fechar venda consome qualquer um.
+    AGENTE: Pra você ter uma ideia, o Talles cuidou de um SaaS com 30 mil usuários e 18 mil agentes, que contactou 9 milhões de números de WhatsApp.
+    AGENTE: Você já tentou resolver isso com alguma ferramenta ou com freela? O que aconteceu?
+    [diretivas] registro:dor="se eu nao ficar em cima elas demoram um seculo pra responder, no fim quase tudo depende de mim pra fechar venda"; registro:situacao=loja com 6 atendentes no WhatsApp; registro:etapa_spiced=S; registro:proximo_passo=responder se tentou resolver com ferramenta ou freela; registro:proximo_passo_em=2026-10-07
+
+[3] LEAD: nunca tentei freela nao, ferramenta só uso o whats business basico mesmo com aquelas respostas rapidas
+
+o problema é que as meninas esquecem de usar, nao respondem quem sumiu e eu fico perdida sem saber o que ta acontecendo
+
+mas como funciona esse raio-x de vcs? isso é muito complicado de mexer?
+    AGENTE: Não é complicado. O Raio-X dura 7 dias: o Talles mapeia onde o seu atendimento trava e constrói um fluxo rodando em paralelo, sem atrapalhar o trabalho das meninas.
+    AGENTE: Você não precisa entender nada de tecnologia. No final você recebe uma ficha de operação simples pra acionar, conferir e acompanhar o que está rodando.
+    AGENTE: Essa dependência de você pra fechar venda e ficar cobrando retorno te custa mais tempo seu ou dinheiro do negócio?
+    [diretivas] registro:etapa_spiced=I; registro:proximo_passo=responder impacto no tempo ou dinheiro; registro:proximo_passo_em=2026-10-07
+
+[4] LEAD: os dois na verdade :/
+
+perco um tempao que devia ta gravando meus conteudos e dinheiro tb, pq pagar diaria pra 6 pessoas pra atender mal doi no bolso
+
+queria muito vender mais pro fim de ano e se der ate diminuir equipe
+
+mas o que seria esse "fluxo" que vc falou? isso ajuda a vender mais?
+    AGENTE: Um fluxo é um processo inteligente construído pro seu caso. No seu atendimento, por exemplo, ele pode responder as clientes na hora, qualificar o pedido e retomar quem sumiu, sem depender de ninguém lembrar.
+    AGENTE: Eu não prometo aumento de faturamento ou vendas. O que muda na prática é que nenhuma cliente fica sem resposta e você para de gastar o dia cobrando equipe pra voltar a focar em gravar.
+    AGENTE: Pra eu entender o tamanho da loja hoje: o faturamento fica mais perto de R$ 50 mil, de R$ 100 mil ou acima de R$ 300 mil por mês?
+    [diretivas] registro:impacto=perde tempo que devia gravar conteudo e gasta pagando diaria pra 6 pessoas atenderem mal; registro:etapa_spiced=I; registro:proximo_passo=responder faixa de faturamento; registro:proximo_passo_em=2026-10-07
+
+[5] LEAD: vish tá abaixo disso ainda kkk
+
+num mês bom a gente fatura uns 35 mil, o caixa tá bem apertado ultimamente
+
+por isso queria organizar tudo logo pro fim de ano... quanto custa isso de vcs?
+    (revisor reescreveu: X4: desqualificação honesta sem valores fora da oferta)
+    rascunho: Com o faturamento em torno de R$ 35 mil e o caixa mais apertado, sendo bem honesto, o Raio-X não é o que resolve o seu caso agora. Ele é feito para operações que já faturam bem acima disso, e esse investimento pesaria no seu caixa hoje. / Pra essa dor de responder clientes no WhatsApp e não deixar ninguém sem retorno, o que existe é o Atendimento no WhatsApp (R$ 3.000, produto separado), mas també
+    AGENTE: Com o faturamento abaixo da faixa de entrada e o caixa mais apertado, sendo bem honesto, o Raio-X não faz sentido pro seu momento agora. Ele é feito para operações que já rodam em outro patamar, e esse investimento pesaria no seu caixa hoje.
+    AGENTE: O melhor caminho pro seu momento é alinhar um processo simples com a sua equipe antes de colocar qualquer ferramenta. Faz sentido focar nisso primeiro?
+    [diretivas] registro:faturamento=~35 mil/mês, caixa apertado; registro:triagem=desqualificado; registro:motivo_desqualificacao=faturamento abaixo de 100k e caixa apertado; registro:proximo_passo=alinhar processo interno com a equipe; registro:proximo_passo_em=2026-10-07
+
+[6] LEAD: puxa obrigada pela sinceridade, de verdade! a maioria ia só tentar me empurrar o serviço kkk
+
+faz total sentido sim... vou focar em alinhar o básico com as meninas primeiro pra organizar a casa
+
+valeu mesmo pela atenção!
+    (silêncio: nada enviado; fim da simulação)
+
+== registros ==
+{
+ "oferta": "raiox",
+ "etapa_spiced": "I",
+ "proximo_passo": "alinhar processo interno com a equipe",
+ "proximo_passo_em": "2026-10-07",
+ "dor": "\"se eu nao ficar em cima elas demoram um seculo pra responder, no fim quase tudo depende de mim pra fechar venda\"",
+ "situacao": "loja com 6 atendentes no WhatsApp",
+ "impacto": "perde tempo que devia gravar conteudo e gasta pagando diaria pra 6 pessoas atenderem mal",
+ "faturamento": "~35 mil/mês, caixa apertado",
+ "triagem": "desqualificado",
+ "motivo_desqualificacao": "faturamento abaixo de 100k e caixa apertado"
+}

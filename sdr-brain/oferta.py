@@ -139,6 +139,13 @@ def purchased(context: dict[str, Any]) -> bool:
     return fold(str(value or "")).strip() == "sim"
 
 
+def disqualified(context: dict[str, Any]) -> bool:
+    """The Raio-X triage said no ([[REGISTRO: triagem = desqualificado]])."""
+    lead = (context or {}).get("lead") or {}
+    value = (lead.get("registros") or {}).get("triagem") or lead.get("triagem")
+    return fold(str(value or "")).strip() == "desqualificado"
+
+
 def amounts(text: str) -> set[int]:
     """Every R$ value in the text, in reais ("R$ 1.300" -> 1300, "R$ 12 a 18 mil" -> 12000 and 18000)."""
     found = set()
@@ -277,6 +284,9 @@ def check(parts: list[str], context: dict[str, Any], lead_texts: list[str]) -> l
     ofertas = context.get("ofertas") or {}
     if offer == "raiox":
         allowed = offer_amounts(ofertas, "raiox")
+        if disqualified(context):
+            # Degrau de entrada (decisão do Talles, 06/10): o desqualificado do Raio-X pode ouvir a instalação.
+            allowed |= offer_amounts(ofertas, "instalador", upper_steps=False)
     elif offer == "instalador":
         allowed = offer_amounts(ofertas, "instalador", upper_steps=bought)
     else:

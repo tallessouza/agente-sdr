@@ -1,0 +1,74 @@
+
+[1] LEAD: E aí! Sou o @carla.beauty e quero saber mais sobre o Raio-X
+    AGENTE: Oi, Carla! Sou o agente do Talles. Vi que você comentou no post sobre o Raio-X.
+    AGENTE: O que trava na sua operação quando você fica uma semana fora?
+    [diretivas] registro:oferta=raiox; registro:etapa_spiced=P; registro:proximo_passo=dizer o que trava na operação; registro:proximo_passo_em=2026-10-07
+
+[2] LEAD: nossa trava tudo kkk
+se eu nao tiver em cima as meninas demoram pra responder, esquecem cliente...
+praticamente para tudo se eu sair
+    AGENTE: Ficar em cima o tempo todo pras mensagens não acumularem consome um tempo absurdo.
+    AGENTE: Pelo que você posta sobre a loja de maquiagem, imagino a loucura que deve ser conciliar a produção de conteúdo com a supervisão do atendimento.
+    AGENTE: Quantas pessoas hoje dependem de você para destravar isso?
+    [diretivas] registro:dor="as meninas demoram pra responder, esquecem cliente... praticamente para tudo se eu sair"; registro:etapa_spiced=S; registro:proximo_passo=responder quantas pessoas dependem dela; registro:proximo_passo_em=2026-10-07
+
+[3] LEAD: tenho 6 meninas atendendo por diaria
+mas parece que nenhuma tem compromisso sabe... qualquer coisinha já me chamam
+acaba que tudo volta pra mim
+    AGENTE: Ter 6 pessoas no atendimento e ainda assim ter que intervir em cada detalhe consome toda a sua energia.
+    AGENTE: Pra você ter uma referência, o Talles cuidou de um SaaS com 30 mil usuários e 18 mil agentes, que contactou 9 milhões de números de WhatsApp.
+    AGENTE: Você já tentou resolver com ferramenta ou com freela? O que aconteceu?
+    [diretivas] registro:situacao=loja de maquiagem, 6 atendentes por diária, dona é acionada pra tudo; registro:etapa_spiced=S; registro:proximo_passo=responder se já tentou ferramenta ou freela; registro:proximo_passo_em=2026-10-07
+
+[4] LEAD: nunca contratei freela nem essas ferramentas nao
+só vou colocando mais gente pra tentar dar conta mas vira essa bagunça
+nem sei mexer com automaçao pra ser sincera... como isso funciona na pratica?
+    AGENTE: Você não precisa mexer com automação e nem entender nada de tecnologia.
+    AGENTE: Na prática, o Talles mapeia o atendimento das 6 meninas e constrói um fluxo que roda em paralelo, organizando e respondendo sem você precisar ficar em cima cobrando.
+    AGENTE: Quando as meninas demoram pra responder e esquecem cliente, quem sente primeiro esse impacto, o cliente ou você?
+    [diretivas] registro:etapa_spiced=I; registro:proximo_passo=responder quem sente primeiro o impacto; registro:proximo_passo_em=2026-10-07
+
+[5] LEAD: os dois né...
+a cliente desiste e compra em outra loja, e no fim quem perde o dinheiro sou eu
+mas isso me ajuda a vender mais no fim de ano? consigo diminuir essas 6 meninas? pagar diaria pra todo mundo ta pesando muito pro caixa
+    AGENTE: Eu não prometo aumento de vendas nem corte de equipe. O que muda de verdade é que o atendimento para de demorar, os clientes não ficam sem resposta e a operação roda sem você precisar ficar em cima cobrando.
+    AGENTE: Com o fluxo organizado, você para de perder cliente que desiste por falta de retorno e ganha clareza de como a equipe rende.
+    AGENTE: Pra eu entender o tamanho: hoje o negócio fatura mais perto de R$ 50 mil, de R$ 100 mil ou acima de R$ 300 mil por mês?
+    [diretivas] registro:impacto="cliente desiste e compra em outra loja, e no fim quem perde o dinheiro sou eu / pagar diária pesa pro caixa"; registro:etapa_spiced=I; registro:proximo_passo=responder faixa de faturamento; registro:proximo_passo_em=2026-10-07
+
+[6] LEAD: ta bem abaixo disso kkk
+num mes muito bom da uns 35 mil, o caixa ta bem apertado ultimamente
+    (revisor reescreveu: X4: desqualificação com valor e produto fora da oferta (R$ 3.000 / Atendimento no WhatsApp))
+    rascunho: Sendo bem honesto com você, com o faturamento em R$ 35 mil e o caixa apertado, o Raio-X não é o passo certo para a sua loja agora. Ele foi feito para operações maiores, a partir de R$ 100 mil por mês. / Além disso, como a sua dor principal é o atendimento dos clientes no WhatsApp pras meninas não demorarem e esquecerem cliente, isso seria o Atendimento no WhatsApp (R$ 3.000), que é um produto sepa
+    AGENTE: Sendo bem honesto com você, com o faturamento abaixo dessa faixa e o caixa apertado, o Raio-X não é o passo certo para a sua loja agora. Ele foi feito para operações maiores, a partir de R$ 100 mil por mês.
+    AGENTE: O melhor passo hoje é alinhar um processo básico com as 6 meninas internamente antes de investir nisso. Faz sentido olhar por esse lado?
+    [diretivas] registro:faturamento=R$ 35 mil / caixa apertado; registro:triagem=desqualificado; registro:motivo_desqualificacao=faturamento abaixo da faixa e caixa apertado; registro:desfecho=desqualificado; registro:proximo_passo=alinhar processo interno com as atendentes; registro:proximo_passo_em=2026-10-07
+
+[7] LEAD: faz sentido sim... agradeço muito a sinceridade!
+a maioria ia tentar me empurrar qualquer coisa mesmo vendo que nao é meu momento
+
+vou tentar dar uma organizada com elas aqui primeiro entao
+obrigada de verdade!
+    AGENTE: Imagina, Carla! Fico na torcida por você e pela loja.
+    AGENTE: Fica super à vontade para me chamar por aqui quando a operação crescer e o momento for outro. Boa sorte na organização com a equipe!
+    [diretivas] registro:proximo_passo=organizar atendimento internamente com as atendentes; registro:proximo_passo_em=2026-10-14
+
+[8] LEAD: valeu mesmo! vou continuar acompanhando o talles por aqui
+quando a loja crescer mais eu chamo vcs com certeza
+obrigada pelo toque e bom trabalho aí!
+    (silêncio: nada enviado; fim da simulação)
+
+== registros ==
+{
+ "oferta": "raiox",
+ "etapa_spiced": "I",
+ "proximo_passo": "organizar atendimento internamente com as atendentes",
+ "proximo_passo_em": "2026-10-14",
+ "dor": "\"as meninas demoram pra responder, esquecem cliente... praticamente para tudo se eu sair\"",
+ "situacao": "loja de maquiagem, 6 atendentes por diária, dona é acionada pra tudo",
+ "impacto": "\"cliente desiste e compra em outra loja, e no fim quem perde o dinheiro sou eu / pagar diária pesa pro caixa\"",
+ "faturamento": "R$ 35 mil / caixa apertado",
+ "triagem": "desqualificado",
+ "motivo_desqualificacao": "faturamento abaixo da faixa e caixa apertado",
+ "desfecho": "desqualificado"
+}

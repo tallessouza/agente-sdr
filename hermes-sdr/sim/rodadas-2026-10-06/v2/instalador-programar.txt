@@ -1,0 +1,77 @@
+
+[1] LEAD: E aí! Sou o @marcos.contabil e quero o meu Time de IA instalado
+    AGENTE: Oi! Sou o agente do Talles. Bora colocar o seu time de IA pra rodar, @marcos.contabil.
+    AGENTE: Pra eu ver como fica no seu caso, o que o escritório atende e quem toca o dia a dia hoje?
+    [diretivas] registro:oferta=instalador; registro:etapa_spiced=S; registro:proximo_passo=responder sobre o dia a dia do escritório; registro:proximo_passo_em=2026-10-07
+
+[2] LEAD: Olá, boa tarde. 
+
+Nós somos um escritório pequeno aqui em Belo Horizonte, atendemos principalmente empresas do comércio e prestadores de serviços em geral. Hoje somos em 3 pessoas tocando o dia a dia aqui, eu e mais duas colaboradoras. 
+
+Mas antes de prosseguir, queria tirar uma dúvida básica: eu preciso saber programar para mexer nisso? Pergunto porque eu não sou da área de tecnologia e não entendo dessa parte técnica.
+    AGENTE: Não precisa saber nada de programação, Marcos. Você não abre terminal nem instala nada; só preenche 5 campos e o time chega pronto no seu Telegram.
+    AGENTE: Com vocês em 3 tocando o escritório, o que mais tem comido o seu tempo hoje: organizar as demandas da equipe, responder cliente ou redigir e conferir coisas?
+    [diretivas] registro:situacao=escritório de contabilidade em BH com 3 pessoas, atende comércio e serviços; registro:etapa_spiced=P; registro:proximo_passo=responder sobre o que mais toma tempo; registro:proximo_passo_em=2026-10-07
+
+[3] LEAD: Entendi, fico mais tranquilo em saber que não preciso mexer com programação.
+
+Sobre o tempo, olha, responder cliente consome demais o nosso dia. Toda semana são praticamente as mesmas perguntas sobre prazo de vencimento de imposto, envio de guias e declarações. Além disso, eu perco um bom tempo montando propostas de honorários à mão quando aparece cliente novo querendo orçamento.
+
+Mas me diz uma coisa: isso roda no meu computador? Porque as máquinas aqui do escritório já são um pouco mais antigas e tenho receio de pesar o sistema.
+    AGENTE: Não roda no seu computador. Roda em um servidor em nuvem (a VPS), que fica no seu nome e não pesa nada nas máquinas do escritório. No seu computador ou celular você só usa o Telegram para falar com o time.
+    AGENTE: Sobre responder seus clientes no dia a dia, isso é o Atendimento no WhatsApp (R$ 3.000), um produto separado que não vem nessa instalação. O time de IA de R$ 47 fica com você no Telegram: ele te ajuda a montar essas propostas de honorários, redigir mensagens, organizar o fluxo de trabalho e lembrar prazos.
+    AGENTE: Pra gente ver o próximo passo: você já tem uma VPS e a assinatura do plano pago do ChatGPT (o Codex), ou precisaria contratar?
+    [diretivas] registro:dor="responder cliente consome demais o nosso dia" e "perco um bom tempo montando propostas de honorários à mão"; registro:etapa_spiced=D; registro:proximo_passo=confirmar se tem VPS e Codex; registro:proximo_passo_em=2026-10-07
+
+[4] LEAD: Compreendo. Bom, mesmo sendo focado no Telegram, essa parte de agilizar a elaboração das propostas de honorários e a organização interna já nos ajudaria bastante no dia a dia.
+
+Respondendo à sua pergunta: eu já tenho a assinatura do ChatGPT Plus que uso aqui no escritório. Agora, essa tal de VPS eu não tenho e, para ser sincero, nem sei direito o que é e nem quanto custa. Vocês explicam como funciona para contratar isso?
+
+E outra dúvida que tenho antes de dar qualquer passo: e se não funcionar para a nossa rotina aqui, eu perco o meu dinheiro?
+    AGENTE: Você não perde. A garantia "Pronto em 48 h" funciona assim: se o time não avisar "Pronto." no seu Telegram em até 48 h depois do formulário preenchido, a instalação continua até ficar pronta; se não ficar, devolve o valor da instalação. Você também tem os 7 dias de arrependimento.
+    AGENTE: A VPS é o servidor onde o time vai rodar. O caminho é simples: uma VPS com Ubuntu e 8 GB de RAM (por exemplo, a KVM2 da Hostinger), no seu nome. A instalação é R$ 47, pagamento único. Por fora fica só a VPS, cerca de R$ 119 por mês, paga direto a eles. O Codex é o plano pago do ChatGPT que você já paga.
+    AGENTE: A página https://instalador.talles.dev/antes mostra o que conferir antes de avançar. Você consegue contratar a VPS hoje, ou prefere ver isso amanhã?
+    [diretivas] registro:tem_vps=não; registro:tem_codex=sim; registro:proximo_passo=contratar a VPS; registro:proximo_passo_em=2026-10-07
+
+[5] LEAD: Entendi as explicações sobre as garantias e os custos envolvidos. O valor da instalação de R$ 47 é bem acessível, mas como envolve esse custo mensal da VPS e vai mexer na rotina do escritório, eu vou ver com a minha sócia primeiro para alinharmos tudo com calma. 
+
+Não gosto de fazer nada na correria. Assim que conversarmos hoje ou amanhã, eu retorno o contato por aqui para darmos o próximo passo. Agradeço a atenção e os esclarecimentos.
+    AGENTE: Entendo totalmente. Alinhar com a sua sócia faz todo sentido antes de mexer na rotina do escritório.
+    AGENTE: O que você acha que ela teria de principal dúvida ou que poderia não aprovar?
+    [diretivas] registro:objecao="vou ver com a minha sócia primeiro para alinharmos tudo com calma"; registro:ramo_objecao=outra_pessoa; registro:decisao=ele e a sócia; registro:proximo_passo=conversar com a sócia; registro:proximo_passo_em=2026-10-07
+
+[6] LEAD: A principal dúvida dela certamente vai ser sobre o custo-benefício dessa mensalidade da VPS no final do mês, já que a parte de atender direto os clientes no WhatsApp não está inclusa nesse pacote. 
+
+Ela é bem pé no chão com as despesas do escritório, então vai querer entender se o tempo economizado na elaboração das propostas e na organização interna realmente justifica esse valor mensal, além do receio comum de saber se a nossa equipe vai de fato se adaptar e usar a ferramenta no dia a dia, ou se vai acabar ficando de lado.
+
+Vou explicar esses pontos para ela com clareza, mostrar como funciona a garantia e o que você me explicou, e volto a falar com você.
+    AGENTE: Entendo totalmente o cuidado dela. Na ponta do lápis, as horas que você gasta hoje montando propostas de honorários à mão e organizando o dia do escritório custam bem mais do que os cerca de R$ 119 da VPS.
+    AGENTE: E sobre a adaptação: o time manda a Pauta do dia no Telegram todo dia de manhã e responde direto por lá, sem ninguém precisar aprender ferramenta nova.
+    AGENTE: Fica à vontade para conversar com ela. Vocês conseguem bater esse papo amanhã ao longo do dia?
+    [diretivas] registro:proximo_passo=conversar com a sócia sobre o custo-benefício e adaptação; registro:proximo_passo_em=2026-10-07
+
+[7] LEAD: Sim, amanhã no início da manhã o movimento é um pouco mais calmo por aqui, então vamos aproveitar esse horário para sentar e avaliar isso com calma. 
+
+Se decidirmos seguir em frente, eu entro em contato novamente logo após o almoço para darmos início. 
+
+Muito obrigado pela atenção e tenha uma boa tarde de trabalho por aí.
+    AGENTE: Perfeito, Marcos. Bom papo com a sua sócia amanhã e uma ótima tarde pra vocês por aí!
+    [diretivas] registro:proximo_passo=retorno após conversa com a sócia; registro:proximo_passo_em=2026-10-07T14:00
+
+[8] LEAD: Obrigado! Uma ótima tarde para você também e até amanhã.
+    (silêncio: nada enviado; fim da simulação)
+
+== registros ==
+{
+ "oferta": "instalador",
+ "etapa_spiced": "D",
+ "proximo_passo": "retorno após conversa com a sócia",
+ "proximo_passo_em": "2026-10-07T14:00",
+ "situacao": "escritório de contabilidade em BH com 3 pessoas, atende comércio e serviços",
+ "dor": "\"responder cliente consome demais o nosso dia\" e \"perco um bom tempo montando propostas de honorários à mão\"",
+ "tem_vps": "não",
+ "tem_codex": "sim",
+ "objecao": "\"vou ver com a minha sócia primeiro para alinharmos tudo com calma\"",
+ "ramo_objecao": "outra_pessoa",
+ "decisao": "ele e a sócia"
+}

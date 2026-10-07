@@ -1,0 +1,62 @@
+
+[1] LEAD: E aí! Sou a @bia.rhconsult e quero saber mais sobre o Raio-X
+    AGENTE: Oi, Bia! Sou o agente do Talles.
+    AGENTE: O que trava na sua operação quando você fica uma semana fora?
+    [diretivas] registro:oferta=raiox; registro:instagram=@bia.rhconsult; registro:etapa_spiced=P; registro:proximo_passo=responder o que trava na operacao; registro:proximo_passo_em=2026-10-07
+
+[2] LEAD: Oi! Se eu fico fora, para quase tudo. 
+
+Eu trabalho praticamente sozinha, só tenho uma estagiária duas vezes por semana. O que mais me toma tempo e trava tudo se eu não fizer é montar as propostas comerciais, escrever as descrições de vagas e organizar a agenda das entrevistas. 
+
+Como funciona exatamente esse Raio-X de vocês?
+    AGENTE: O Raio-X é uma intervenção de 7 dias em que o Talles mapeia a operação e constrói fluxos para negócios com equipes maiores. Como você toca a consultoria praticamente sozinha com a estagiária duas vezes por semana, o Raio-X não é o que resolve pra você hoje.
+    AGENTE: O que tira das suas mãos montar as propostas comerciais, escrever as descrições de vagas e organizar a agenda das entrevistas é a Instalação do Time de IA, que chega pronto no seu Telegram pra responder, escrever e organizar isso por você.
+    AGENTE: Faz sentido esse caminho pro seu caso?
+    [diretivas] registro:situacao=consultoria de RH, praticamente sozinha com estagiária duas vezes por semana; registro:dor="montar as propostas comerciais, escrever as descrições de vagas e organizar a agenda das entrevistas"; registro:triagem=desqualificado; registro:motivo_desqualificacao=trabalha praticamente sozinha, sem equipe grande para o Raio-X; registro:oferta=instalador; registro:etapa_spiced=P; registro:proximo_passo=confirmar interesse na instalacao do time de IA; registro:proximo_passo_em=2026-10-07
+
+[3] LEAD: Faz sentido sim, é bem isso que me prende até tarde hoje. 
+
+Como funciona isso na prática pelo Telegram e quanto custa por mês?
+    AGENTE: Na prática, você conversa com o seu time direto pelo Telegram. Você manda as informações e ele rascunha as propostas comerciais, escreve as descrições de vagas e ajuda a organizar a agenda das entrevistas por lá.
+    AGENTE: A instalação é R$ 47, pagamento único. Por fora ficam a VPS, cerca de R$ 119 por mês, e o Codex, cerca de R$ 100 por mês, pagos direto a eles, no seu nome.
+    [diretivas] registro:etapa_spiced=D; registro:proximo_passo=aguardar reacao ao preco; registro:proximo_passo_em=2026-10-07
+
+[4] LEAD: O valor cabe no meu bolso sim. 
+
+Mas o que é essa VPS? Não entendo nada de servidor. E eu já assino o ChatGPT Plus hoje, precisaria pagar ele, a VPS e mais esse Codex?
+    AGENTE: O Codex é exatamente o plano pago do ChatGPT que você já assina, então não tem custo novo de IA pra você. Por mês fica só a VPS.
+    AGENTE: A VPS é o servidor onde o seu time de IA fica rodando no seu nome. Você não precisa entender nada de tecnologia nem abrir terminal: é só contratar uma com Ubuntu e 8 GB de RAM (como a KVM2 da Hostinger, cerca de R$ 119 por mês).
+    AGENTE: A página https://instalador.talles.dev/antes mostra o que conferir antes de comprar. Você consegue contratar a VPS hoje, ou prefere fazer isso amanhã?
+    [diretivas] registro:tem_codex=sim; registro:tem_vps=não; registro:etapa_spiced=D; registro:proximo_passo=contratar a VPS; registro:proximo_passo_em=2026-10-07
+
+[5] LEAD: Ah, ótimo saber que já aproveito a assinatura do ChatGPT!
+
+Consigo ver isso hoje sim. Qual é o próximo passo? Contrato a VPS primeiro ou faço o pagamento da instalação de R$ 47 com vocês?
+    AGENTE: O caminho é por aqui https://instalador.talles.dev/antes
+    AGENTE: A página confere duas coisas antes de liberar a compra, a VPS e o Codex (ou a Conta do Gemini junto na compra).
+    AGENTE: Depois do pagamento você entra na área do cliente com o mesmo e-mail, preenche 5 campos, e em até 48 h o time te avisa "Pronto." no Telegram. Consegue fazer hoje, ou fica para amanhã?
+    [diretivas] registro:etapa_spiced=fechamento; registro:link_enviado=sim; registro:proximo_passo=comprar pelo link; registro:proximo_passo_em=2026-10-06
+
+[6] LEAD: Perfeito, vou acessar o link agora mesmo e fazer tudo por aqui hoje ainda. Obrigada pela explicação!
+    AGENTE: Combinado, Bia!
+    AGENTE: Fica à vontade para me chamar por aqui quando concluir o formulário.
+    [diretivas] registro:proximo_passo=comprar pelo link e preencher o formulario; registro:proximo_passo_em=2026-10-06
+
+[7] LEAD: Combinado! Assim que eu preencher tudo, te aviso por aqui. Até logo!
+    (silêncio: nada enviado; fim da simulação)
+
+== registros ==
+{
+ "oferta": "instalador",
+ "instagram": "@bia.rhconsult",
+ "etapa_spiced": "fechamento",
+ "proximo_passo": "comprar pelo link e preencher o formulario",
+ "proximo_passo_em": "2026-10-06",
+ "situacao": "consultoria de RH, praticamente sozinha com estagiária duas vezes por semana",
+ "dor": "\"montar as propostas comerciais, escrever as descrições de vagas e organizar a agenda das entrevistas\"",
+ "triagem": "desqualificado",
+ "motivo_desqualificacao": "trabalha praticamente sozinha, sem equipe grande para o Raio-X",
+ "tem_codex": "sim",
+ "tem_vps": "não",
+ "link_enviado": "sim"
+}

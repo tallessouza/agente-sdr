@@ -319,5 +319,21 @@ class ToConfirm(unittest.TestCase):
         self.assertIn("abertura (\"o que trava…\") → triagem", app.prompt("fup.md"))
 
 
+class EntryStepForDisqualifiedRaiox(unittest.TestCase):
+    """Decisão do Talles (06/10): o desqualificado do Raio-X pode ouvir a instalação de R$ 47."""
+    PRICE = "A instalação é R$ 47, pagamento único. Por fora fica só a VPS, cerca de R$ 119 por mês."
+
+    def test_qualified_raiox_lead_still_cannot_hear_installer_prices(self):
+        self.assertTrue(oferta.check([self.PRICE], R, []))
+
+    def test_disqualified_raiox_lead_can_hear_the_installation(self):
+        ctx = {**R, "lead": {"registros": {"triagem": "desqualificado"}}}
+        self.assertEqual(oferta.check([self.PRICE], ctx, []), [])
+
+    def test_disqualified_raiox_lead_cannot_hear_upper_steps(self):
+        ctx = {**R, "lead": {"registros": {"triagem": "desqualificado"}}}
+        self.assertTrue(oferta.check(["O Atendimento no WhatsApp custa R$ 9.999."], ctx, []))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
