@@ -76,7 +76,12 @@ CONTACT_PROMISE_RE = re.compile(
 )
 VIDEO_RE = re.compile(r"\b(?:tem|temos|ha|segue|te mando|mando|manda|olha|assiste|assista|veja|ve|gravei|gravado)\b[^.!?\n]{0,25}\bvideos?\b"
                       r"|\bvideos?\b[^.!?\n]{0,25}\b(?:mostra|mostram|ensina|ensinam|explica|explicam)\b")
-GEMINI_DURATION_RE = re.compile(r"\bconta do gemini\b[^.!?\n]{0,60}\b(?:vitalicia|para sempre|pra sempre|nunca expira|nao expira|por tempo indeterminado|por \d+ (?:dias|meses|anos)|(?:um|1) ano)\b")
+# The R$ 100 bump is "1 Ano de Tokens" (tokens do Gemini). "Conta do Gemini" is
+# its old name, gone from the checkout; both are recognised so a wrong price or
+# a duration promise is caught under either. Saying "Gemini" itself is allowed.
+TOKENS_PRODUCT = r"(?:(?:1|um)\s+ano\s+de\s+tokens|conta do gemini)"
+TOKENS_DURATION_RE = re.compile(r"\b" + TOKENS_PRODUCT + r"\b[^.!?\n]{0,60}\b(?:vitalicia|para sempre|pra sempre|nunca expira|nao expira"
+                                r"|por tempo indeterminado|por \d+ (?:dias|meses|anos)|(?:um|1) ano(?!\s+de\s+tokens))\b")
 WHATSAPP_SERVICE_RE = re.compile(r"\b(?:time|instalacao|agentes?|r\$ 47)\b[^.!?\n]{0,60}\b(?:atende|atendem|responde|respondem|atendendo|respondendo)\b[^.!?\n]{0,30}\b(?:seus clientes|os clientes|clientes|whatsapp|whats|zap)\b")
 UPPER_STEP_RE = re.compile(r"\braio[\s-]?x\b|\bcopiar a minha operacao\b")
 # The Raio-X proof (SOUL, OS NÚMEROS DO RAIO-X) is proof only in the Raio-X.
@@ -232,7 +237,7 @@ def _price_issues(folded: str, allowed: set[int], lead_values: set[int]) -> list
     return issues
 
 
-PRODUCT_PRICE_RE = re.compile(r"\b(raio[\s-]?x|instalacao|implantacao|copiar a minha operacao|conta do gemini|atendimento no whatsapp)\b"
+PRODUCT_PRICE_RE = re.compile(r"\b(raio[\s-]?x|instalacao|implantacao|copiar a minha operacao|" + TOKENS_PRODUCT + r"|atendimento no whatsapp)\b"
                               r"[^.!?\n]{0,25}?\b(?:e|custa|sai|fica|vale)\b(?:\s+(?:por|so|de|a|o))?\s+(r\$\s?[\d.,]+(?:\s?mil\b)?)")
 
 
@@ -243,14 +248,14 @@ def product_prices(ofertas: dict[str, Any]) -> dict[str, set[int]]:
     sources = {"instalacao": inst.get("preco"), "raio-x": raiox.get("preco") or named.get("Raio-X da Operação"),
                "implantacao": (raiox.get("implantacao") or {}).get("preco"),
                "copiar a minha operacao": (raiox.get("copiar_a_minha_operacao") or {}).get("preco") or named.get("Copiar a minha operação"),
-               "conta do gemini": named.get("Conta do Gemini"), "atendimento no whatsapp": named.get("Atendimento no WhatsApp")}
+               "1 ano de tokens": named.get("1 Ano de Tokens") or named.get("Conta do Gemini"), "atendimento no whatsapp": named.get("Atendimento no WhatsApp")}
     return {name: amounts(price) for name, price in sources.items() if isinstance(price, str) and amounts(price)}
 
 
 def _product_price_issues(folded: str, ofertas: dict[str, Any]) -> list[str]:
     prices, issues = product_prices(ofertas), []
     for product, money in PRODUCT_PRICE_RE.findall(folded):
-        key = "raio-x" if product.startswith("raio") else product
+        key = "raio-x" if product.startswith("raio") else "1 ano de tokens" if re.fullmatch(TOKENS_PRODUCT, product) else product
         if key in prices and amounts(money) and not amounts(money) & prices[key]:
             issues.append(f"preço errado para {key}: {money.upper()}")
     return issues
@@ -307,8 +312,8 @@ def check(parts: list[str], context: dict[str, Any], lead_texts: list[str]) -> l
         issues.append("desconto ou cupom (não existe)")
     if _affirmed(CONTACT_PROMISE_RE, folded):
         issues.append("promete contato numa data (o agente não agenda contato; o próximo passo vai para o registro)")
-    if _affirmed(GEMINI_DURATION_RE, folded):
-        issues.append("promete por quanto tempo a Conta do Gemini dura")
+    if _affirmed(TOKENS_DURATION_RE, folded):
+        issues.append("promete por quanto tempo o 1 Ano de Tokens dura")
     if COPIAR_SWAP_RE.search(folded):
         issues.append("troca a implantação do Raio-X pelo Copiar a minha operação (são dois produtos)")
     if offer != "raiox":

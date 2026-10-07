@@ -177,7 +177,7 @@ class Finding08NoResale(unittest.TestCase):
     def test_wording(self):
         for text in (SOUL, json.dumps(OFERTAS, ensure_ascii=False)):
             self.assertNotIn("revende", text.lower())
-        self.assertIn("não vende o servidor nem o Codex; a Conta do Gemini é opcional na compra", OFERTAS["instalador"]["regras"])
+        self.assertIn("não vende o servidor nem o Codex; o 1 Ano de Tokens é opcional na compra", OFERTAS["instalador"]["regras"])
         self.assertIn("Não vende o servidor nem o Codex", SOUL)
 
 
@@ -209,14 +209,14 @@ class Finding11OneForbiddenList(unittest.TestCase):
 
 
 class Finding12MonthlyCost(unittest.TestCase):
-    def test_gemini_buyer_pays_only_the_vps(self):
+    def test_tokens_buyer_pays_only_the_vps(self):
         price = SOUL.split("O PREÇO (quando")[1].split("O FECHAMENTO")[0]
-        gemini = price.split("Quem vai levar a Conta do Gemini")[1].split("Depois PARE")[0]
+        gemini = price.split("Quem vai levar o 1 Ano de Tokens")[1].split("Depois PARE")[0]
         self.assertIn("paga por mês só a\nVPS", gemini)
         self.assertNotIn("R$ 100 por mês", gemini)
         self.assertIn("não cite o Codex", gemini)
-        self.assertIn("quem vai levar a Conta do Gemini paga por mês só a VPS", app.prompt("revisor.md"))
-        self.assertIn("com_conta_do_gemini", OFERTAS["instalador"]["custo_mensal"])
+        self.assertIn("quem vai levar o 1 Ano de Tokens paga por mês só a VPS", app.prompt("revisor.md"))
+        self.assertIn("com_1_ano_de_tokens", OFERTAS["instalador"]["custo_mensal"])
 
 
 class Finding13OnlyEightGB(unittest.TestCase):
@@ -296,11 +296,12 @@ class ToConfirm(unittest.TestCase):
         self.assertIn("reembolso em até 48 h", (ROOT / "OFERTA-ATUAL.md").read_text(encoding="utf-8"))
         self.assertIn("reembolso em até 48 h", OFERTAS["instalador"]["garantia"])
 
-    def test_gemini_duration_is_never_promised(self):
-        self.assertTrue(check("A Conta do Gemini é sua para sempre."))
-        self.assertTrue(check("A Conta do Gemini vale por 12 meses.", U))
-        self.assertIn("não promete por quanto tempo a conta dura", OFERTAS["instalador"]["bumps"][0]["nota"])
-        self.assertIn("Não prometa por quanto tempo a Conta do", SOUL)
+    def test_tokens_duration_is_never_promised(self):
+        self.assertTrue(check("O 1 Ano de Tokens é seu para sempre."))
+        self.assertTrue(check("O 1 Ano de Tokens vale por 12 meses.", U))
+        self.assertTrue(check("A Conta do Gemini é sua para sempre."))  # the old name is still caught
+        self.assertIn("não promete por quanto tempo os tokens duram", OFERTAS["instalador"]["bumps"][0]["nota"])
+        self.assertIn("prometa por quanto tempo o 1 Ano de Tokens dura", SOUL)
 
     def test_raiox_case_numbers_are_not_installer_proof(self):
         proof = "o Talles cuidou de um SaaS com 30 mil usuários e 18 mil agentes"
@@ -317,6 +318,38 @@ class ToConfirm(unittest.TestCase):
         self.assertIn(opening, SOUL.split("═══ COMO SOA")[1])
         self.assertIn(opening, app.prompt("revisor.md"))
         self.assertIn("abertura (\"o que trava…\") → triagem", app.prompt("fup.md"))
+
+
+class OneYearOfTokens(unittest.TestCase):
+    """07/10: a Conta do Gemini virou "1 Ano de Tokens" no site e na Kiwify; dizer que é o Gemini pode."""
+
+    def test_the_offer_phrase_passes(self):
+        for context in (I, U):
+            for text in ("O 1 Ano de Tokens, R$ 100, pagamento único. Ele entra no lugar do Codex.",
+                         "Sem Codex, dá para levar o 1 Ano de Tokens junto na compra, R$ 100, pagamento único.",
+                         "O 1 Ano de Tokens é R$ 100, pagamento único.",
+                         "O 1 Ano de Tokens, que é o Gemini, R$ 100, pagamento único, entra no lugar do Codex.",
+                         "Na área do cliente, você abre o link, entra na conta indicada e autoriza o Gemini."):
+                self.assertEqual(check(text, context), [], text)
+
+    def test_a_wrong_price_is_caught_under_either_name(self):
+        self.assertTrue(any("1 ano de tokens" in i for i in check("O 1 Ano de Tokens custa R$ 47.")))
+        self.assertTrue(any("1 ano de tokens" in i for i in check("A Conta do Gemini custa R$ 47.")))
+        self.assertEqual(oferta.product_prices(OFERTAS)["1 ano de tokens"], {100})
+
+    def test_the_name_in_the_facts_and_the_prompts(self):
+        bump = OFERTAS["instalador"]["bumps"][0]
+        self.assertEqual((bump["nome"], bump["preco"], bump["cobranca"]), ("1 Ano de Tokens", "R$ 100", "única"))
+        self.assertIn("substitui o Codex", bump["nota"])
+        self.assertNotIn("Gemini One", SOUL)
+        self.assertNotIn("a Conta do Gemini", SOUL)
+        self.assertNotIn("a Conta do Gemini", json.dumps(OFERTAS, ensure_ascii=False))
+        revisor = app.prompt("revisor.md")
+        self.assertIn("I10.", revisor)
+        self.assertIn('trocando pelo "1 Ano de Tokens"', revisor)
+        for name in ("revisor.md", "fup.md", "supervisor.md"):
+            self.assertIn("1 Ano de Tokens", app.prompt(name), name)
+        self.assertIn("entra na conta indicada e autoriza o Gemini", SOUL)
 
 
 class EntryStepForDisqualifiedRaiox(unittest.TestCase):

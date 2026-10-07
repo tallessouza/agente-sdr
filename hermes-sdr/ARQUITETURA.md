@@ -141,11 +141,12 @@ A bridge interpreta as diretivas e as remove antes do envio. Qualquer
    s. Se falhar, segue com o rascunho.
 6. **Guardrail determinístico:** termos da stack, `[[`, caminhos → não envia,
    manda a resposta-padrão e escala. Os nomes de produto que a oferta exige
-   (`SDR_OFFER_PHRASES`: "Conta do Gemini", "plano pago do ChatGPT",
-   "ChatGPT Plus"/"Pro", "seu ChatGPT", "conta grátis do ChatGPT", "o seu
-   Gemini", "Gemini Advanced"…) saem do texto antes da conferência;
-   "gemini" ou "chatgpt" soltos continuam barrados, e o agente dizer o que
+   (`SDR_OFFER_PHRASES`: "plano pago do ChatGPT", "ChatGPT Plus"/"Pro",
+   "seu ChatGPT", "conta grátis do ChatGPT"…) saem do texto antes da
+   conferência; "chatgpt" solto continua barrado, e o agente dizer o que
    roda ele ("eu rodo no ChatGPT Plus") é barrado como "modelo próprio".
+   "gemini" não é vazamento desde 07/10: o bump de R$ 100, "1 Ano de
+   Tokens", é o Gemini, e o agente pode dizer isso.
    Antes dele, uma escalação "perfil para Raio-X" de lead do Instalador sem
    `comprou = sim` vira o registro `perfil_raiox = sim` (a venda segue).
 7. **Sem travessão nem dois-pontos conectivo** (`sdr.plain_style`, também

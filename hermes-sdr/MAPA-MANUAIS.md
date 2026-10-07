@@ -94,7 +94,7 @@ O LIVRO, o MV e o BRIEF ainda descrevem o modelo de 04/10, substituído em
 05/10. Ficaram de fora do SOUL:
 
 - Os **3 conjuntos** (Instalado / + IA inclusa / Feito por nós) e a ordem 3 → 2 → 1 na página (MV §3.1, LIVRO "Estado em 04/10").
-- **IA inclusa** pela revenda do Google One (LIVRO, BRIEF, MV §10). Hoje: assinatura do cliente ou o bump Conta do Gemini (OFERTA §9).
+- **IA inclusa** pela revenda do Google One (LIVRO, BRIEF, MV §10). Hoje: assinatura do cliente ou o bump 1 Ano de Tokens, que é o Gemini (antes "Conta do Gemini"; OFERTA §9).
 - **Plantão** de 7/30/90 dias, conserto expresso (C2), sessão de 45 min do "Preciso de apoio" (B1), pacote da profissão (B2), "Fazemos por você" (U1/U1-d), Multi-assinatura (PRO) (LIVRO §7).
 - **Lotes** 47 → 97 → 147 → 197 e o contador de instalações (LIVRO §7, §10; BRIEF "fundo"): não há contador real; OFERTA §8.3 e §9 não decidem lote.
 - **Prazo de 24 h** (LIVRO §2, §4; BRIEF): vale 48 h (OFERTA §9).

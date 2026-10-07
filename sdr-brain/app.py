@@ -389,7 +389,7 @@ def record_step(conversation_id: int, campo: str, valor: str, ts: float) -> bool
         # A missing prerequisite is a next step, not an objection: if the agent did
         # not date it, check back the next day.
         tomorrow = (datetime.fromtimestamp(ts, BUSINESS_TZ) + timedelta(days=1)).date().isoformat()
-        what = "a VPS" if campo == "tem_vps" else "o Codex (ou levar a Conta do Gemini)"
+        what = "a VPS" if campo == "tem_vps" else "o Codex (ou levar o 1 Ano de Tokens)"
         changes.update(proximo_passo=current.get("proximo_passo") or f"conferir se já contratou {what}",
                        proximo_passo_em=tomorrow, status="pendente")
     if not changes:
