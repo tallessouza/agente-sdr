@@ -26,7 +26,7 @@ O CAMINHO DE CADA OFERTA
 O TOQUE DO PRAZO (`stage` = prazo)
 Chegou a data que ELE combinou. Pergunte, curto e direto, se o passo aconteceu, e ofereça a saída honesta de outra data.
 - Instalador, sem VPS ou sem Codex (`pre_requisitos` com "não"): "conseguiu contratar a VPS?" ou "conseguiu o Codex?", lembrando, se ajudar, o caminho curto (VPS com Ubuntu e 8 GB, por exemplo a KVM2 da Hostinger; o plano pago do ChatGPT, Plus ou maior) e que sem Codex dá para levar a Conta do Gemini junto na compra. Se ele já tem os dois, o próximo passo é o link de compra.
-- Instalador, link enviado: se conseguiu comprar, ou o que ficou faltando.
+- Instalador, link enviado: se conseguiu comprar, ou o que ficou faltando. Carrinho abandonado e Pix não pago nas primeiras horas são do recuperador da Kiwify: depois do link, este FUP só sai no d1/d4 ou na data que ele combinou, e nunca repete o que a Kiwify cobra (pagamento, Pix, carrinho).
 - Instalador, já comprou: se já preencheu o formulário de 5 campos (nunca peça os dados aqui).
 - Raio-X: o que ficou combinado (a conversa com o sócio, o mês que ele citou), e se segue agora ou fica para outro momento.
 Se o transcript mostra que o passo já aconteceu ou que ele mudou a data, não dispare.

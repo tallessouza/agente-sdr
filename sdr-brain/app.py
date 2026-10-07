@@ -35,6 +35,8 @@ BUSINESS_TZ = ZoneInfo(os.getenv("SDR_TIMEZONE", "America/Sao_Paulo"))
 BUSINESS_START = int(os.getenv("SDR_BUSINESS_START_HOUR", "9"))
 BUSINESS_END = int(os.getenv("SDR_BUSINESS_END_HOUR", "20"))
 STAGES = [("5min", 300), ("30min", 1800), ("2h", 7200), ("d1", 86400)]
+# Checkpoints que o recuperador da Kiwify cobre depois do link de compra (carrinho, Pix, até 30 min).
+KIWIFY_COVERED_STAGES = {"5min", "30min", "2h"}
 POST_PRICE_STAGE = ("d4", 345600)
 # After the lead replies inside a sequence, a touch needs this much silence
 # (from anyone) before it may fire; otherwise the conversation is still going.
@@ -567,6 +569,9 @@ async def followup_once(now: float | None = None) -> None:
         stages = STAGES + ([POST_PRICE_STAGE] if records.get("preco_dado") else [])
         stage = due_stage(current - anchor, bool(records.get("preco_dado")))
         if stage is None:
+            continue
+        if stage in KIWIFY_COVERED_STAGES and str(records.get("link_enviado") or "").strip().lower() == "sim":
+            # Depois do link, as primeiras horas são do recuperador da Kiwify (decisão do Talles, 06/10): sem repetir.
             continue
         final = stage == stages[-1][0]
         if decided(conversation_id, stage, anchor):

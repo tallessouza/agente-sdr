@@ -291,6 +291,16 @@ class Acceptance(unittest.TestCase):
             when = night if cid == 84 else anchor + 400
             self.assertEqual(self.run_followups(when, state), [], cid)
 
+    def test_after_the_link_the_first_hours_are_kiwifys(self):
+        # Decisão do Talles (06/10): depois do link, 5min/30min/2h ficam com o recuperador da Kiwify; d1 continua nosso.
+        anchor = 1790600400.0
+        app.tracked.clear()
+        app.tracked[88] = {"jid": "j", "last_agent_ts": anchor}
+        state = {"last_agent_ts": anchor, "last_lead_ts": anchor - 60, "lead": {"registros": {"link_enviado": "sim"}}}
+        self.assertEqual(self.run_followups(anchor + 400, state), [])
+        self.assertEqual(self.run_followups(anchor + 7800, state), [])
+        self.assertEqual(self.run_followups(anchor + 86500, state), ["d1"])
+
     def test_compact_transcript(self):
         rows = app.compact_transcript([
             {"message_type": 1, "content": "Quantas pessoas dependem de você?", "created_at": 1790600500},
