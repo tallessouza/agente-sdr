@@ -78,7 +78,7 @@ LEAK_TERMS = [
 OFFER_PHRASES = [
     t.strip() for t in os.getenv(
         "SDR_OFFER_PHRASES",
-        "conta do gemini,oauth do gemini,assinatura do gemini,seu gemini,sua conta do gemini,gemini advanced,"
+        "conta do gemini,oauth do gemini,assinatura do gemini,assinatura gemini one,gemini one,seu gemini,sua conta do gemini,gemini advanced,"
         "plano pago do chatgpt,plano do chatgpt,assinatura do chatgpt,conta do chatgpt,conta gratis do chatgpt,"
         "conta gratuita do chatgpt,seu chatgpt,chatgpt plus,chatgpt pro",
     ).split(",") if t.strip()
