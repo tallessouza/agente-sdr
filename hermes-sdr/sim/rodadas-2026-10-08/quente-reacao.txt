@@ -1,0 +1,46 @@
+
+[1] LEAD: Oi, vi o anúncio do time de IA
+    AGENTE: Oi! Sou o agente do Talles.
+    AGENTE: Bora colocar o time de IA pra trabalhar no seu negócio.
+    AGENTE: O que você faz hoje? Te digo como fica no seu caso.
+    [diretivas] registro:oferta=instalador; registro:etapa_spiced=S; registro:proximo_passo=responder o que faz; registro:proximo_passo_em=2026-10-07
+
+[2] LEAD: [Reação recebida: ❤️ na mensagem 3EB0A7C11F02]
+    (revisor reescreveu: C16: reação tratada como sim)
+    rascunho: A instalação é R$ 47, pagamento único. Por fora ficam o seu servidor, na faixa de R$ 120 a R$ 200 por mês, e o Codex, cerca de R$ 100 por mês, pagos direto a eles, no seu nome. / O caminho é por aqui https://instalador.talles.dev/antes. A página confere o servidor e a assinatura antes de liberar a compra. / Me conta: o que você faz no seu negócio? Te dou um exemplo exato de como o time te ajuda no
+    AGENTE: Me conta: o que você faz hoje no seu negócio? Te digo como o time fica no seu caso.
+    [diretivas] registro:proximo_passo=responder o que faz e comprar pelo link; registro:proximo_passo_em=2026-10-07
+
+[3] LEAD: Sou psicóloga clínica, atendo online e no consultório. Faço tudo sozinha por aqui... isso serviria pra mim? 😊
+    AGENTE: Serve pro seu caso, sim: você manda no Telegram "escreva um roteiro de post sobre manejo de ansiedade pro meu perfil" ou pede pra organizar as tarefas da sua semana, e recebe pronto em 1 minuto.
+    AGENTE: A instalação é R$ 47, pagamento único. Por fora ficam o seu servidor, na faixa de R$ 120 a R$ 200 por mês, e o Codex, cerca de R$ 100 por mês, pagos direto a eles, no seu nome.
+    AGENTE: O caminho é por aqui https://instalador.talles.dev/antes. A página confere o servidor e a assinatura antes de liberar a compra. Consegue fazer hoje?
+    [diretivas] registro:situacao=psicóloga clínica, online e consultório, faz tudo sozinha; registro:etapa_spiced=fechamento; registro:link_enviado=sim; registro:preco_dado=sim; registro:proximo_passo=comprar pelo link; registro:proximo_passo_em=2026-10-07
+
+[4] LEAD: E esse servidor, é difícil? 😅
+    AGENTE: Não é difícil. Você não precisa entender de tecnologia nem abrir terminal: o servidor mora fora do seu computador pra trabalhar mesmo com tudo desligado, e a instalação deixa a estrutura pronta lá dentro.
+    AGENTE: Você contrata no seu nome onde preferir (o Talles indica a Hostinger, na faixa de R$ 120 a R$ 200 por mês) e a página https://instalador.talles.dev/antes mostra o passo a passo do que conferir. Depois da compra, você só preenche 5 campos simples.
+    AGENTE: Consegue dar uma olhada e fazer hoje?
+    [diretivas] registro:objecao=E esse servidor, é difícil?; registro:ramo_objecao=pergunta; registro:proximo_passo=conferir os requisitos e comprar pelo link; registro:proximo_passo_em=2026-10-07
+
+[5] LEAD: Ah, que ótimo! Vou fazer amanhã depois das sessões com mais calma, hoje meu dia ainda tá bem corrido. Obrigada! 😊
+    AGENTE: Combinado! Foca nos seus atendimentos por aí hoje.
+    AGENTE: O link tá salvo aqui pra amanhã: https://instalador.talles.dev/antes. Fica à vontade pra me chamar quando terminar as sessões se pintar qualquer dúvida no caminho.
+    AGENTE: Bom trabalho por aí!
+    [diretivas] registro:proximo_passo=contratar VPS e comprar pelo link; registro:proximo_passo_em=2026-10-08
+
+[6] LEAD: Muito obrigada! Até amanhã 😊
+    (silêncio: nada enviado; fim da simulação)
+
+== registros ==
+{
+ "oferta": "instalador",
+ "etapa_spiced": "fechamento",
+ "proximo_passo": "contratar VPS e comprar pelo link",
+ "proximo_passo_em": "2026-10-08",
+ "situacao": "psicóloga clínica, online e consultório, faz tudo sozinha",
+ "link_enviado": "sim",
+ "preco_dado": "sim",
+ "objecao": "E esse servidor, é difícil?",
+ "ramo_objecao": "pergunta"
+}

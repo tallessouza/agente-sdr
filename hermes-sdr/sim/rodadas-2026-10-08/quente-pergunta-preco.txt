@@ -1,0 +1,34 @@
+
+[1] LEAD: quanto custa pra ter esse time?
+    AGENTE: Oi! Sou o agente do Talles. A instalação é R$ 47, pagamento único. Por fora ficam o seu servidor, na faixa de R$ 120 a R$ 200 por mês, e o Codex, cerca de R$ 100 por mês, pagos direto a eles, no seu nome.
+    AGENTE: O caminho é por aqui https://instalador.talles.dev/antes. A página confere o servidor e a assinatura antes de liberar a compra.
+    AGENTE: O que você faz? Te digo como fica no seu caso.
+    [diretivas] registro:oferta=instalador; registro:preco_dado=sim; registro:link_enviado=sim; registro:etapa_spiced=fechamento; registro:proximo_passo=responder o que faz e comprar pelo link; registro:proximo_passo_em=2026-10-07
+
+[2] LEAD: tenho uma loja de material de construcao aqui em uberlandia. perco muito tempo montando orcamento no zap pros clientes que pedem preco. e esse servidor ai eu contrato onde?
+    AGENTE: Você contrata o servidor onde preferir, no seu nome. O Talles indica a Hostinger, por exemplo o KVM 8, que fica na faixa de R$ 120 a R$ 200 por mês, e a página https://instalador.talles.dev/antes mostra o que conferir.
+    AGENTE: Pro seu caso, o time fala com você no Telegram: você manda "monte o texto de orçamento de 50 sacos de cimento e 2 metros de areia no nosso padrão" e recebe a resposta pronta pra enviar pro cliente. Se a ideia for uma IA atender direto os clientes no WhatsApp da loja, isso é o Atendimento no WhatsApp (R$ 3.000), produto separado.
+    AGENTE: O caminho pra instalação é https://instalador.talles.dev/antes. Consegue contratar o servidor e fazer hoje?
+    [diretivas] registro:situacao=loja de material de construcao em Uberlandia; registro:dor="perco muito tempo montando orcamento no zap pros clientes que pedem preco"; registro:proximo_passo=contratar a VPS e comprar pelo link; registro:proximo_passo_em=2026-10-07
+
+[3] LEAD: entendi. hoje nao consigo que ta uma correria aqui na loja. amanha cedo eu vejo esse servidor da hostinger e faco por esse link
+    AGENTE: Combinado! Dia de loja puxa bastante mesmo.
+    AGENTE: Fica à vontade pra me chamar por aqui se tiver qualquer dúvida na hora de pegar o servidor pela manhã.
+    AGENTE: Combinado assim?
+    [diretivas] registro:tem_vps=não; registro:proximo_passo=contratar a VPS e comprar pelo link; registro:proximo_passo_em=2026-10-08
+
+[4] LEAD: beleza, amanha qualquer coisa te chamo aqui. valeu
+    (silêncio: nada enviado; fim da simulação)
+
+== registros ==
+{
+ "oferta": "instalador",
+ "preco_dado": "sim",
+ "link_enviado": "sim",
+ "etapa_spiced": "fechamento",
+ "proximo_passo": "contratar a VPS e comprar pelo link",
+ "proximo_passo_em": "2026-10-08",
+ "situacao": "loja de material de construcao em Uberlandia",
+ "dor": "\"perco muito tempo montando orcamento no zap pros clientes que pedem preco\"",
+ "tem_vps": "não"
+}

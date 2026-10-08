@@ -80,14 +80,15 @@ class NoColonsTests(unittest.TestCase):
 
 class GuardrailTests(unittest.TestCase):
     def test_blocks_stack_names_accent_insensitive(self):
-        self.assertEqual(sdr.leaked_terms(["Eu rodo no Hermes com Gêmini? não, gemini"]), ["hermes"])
+        self.assertEqual(sdr.leaked_terms(["Eu rodo no Hermes com Gêmini? não, gemini"]), ["hermes", "gemini"])
         self.assertEqual(sdr.leaked_terms(["arquivo em /opt/data/x"]), ["/opt/"])
 
     def test_offer_prerequisites_are_not_leaks(self):
-        allowed = ["Sem Codex? Dá pra levar o 1 Ano de Tokens junto na compra.",
+        allowed = ["Sem Codex? Dá pra levar a Conta do Gemini junto na compra.",
                    "O Codex vem no plano pago do ChatGPT, Plus ou maior. Conta grátis não funciona.",
                    "Se você já assina o ChatGPT Plus, está resolvido."]
         self.assertEqual(sdr.leaked_terms(allowed), [])
+        self.assertEqual(sdr.leaked_terms(["Eu rodo no Gemini da Google"]), ["gemini"])
         self.assertEqual(sdr.leaked_terms(["Sou um ChatGPT treinado"]), ["chatgpt"])
 
     def test_installer_script_of_the_soul_passes_the_guardrail(self):
@@ -280,11 +281,11 @@ class AuditFilterAndOfferTests(unittest.TestCase):
     def test_offer_answers_about_the_leads_own_ai_pass(self):
         allowed = [
             "o Codex, que é o plano pago do ChatGPT (Plus ou maior), referência R$ 100 por mês. Conta grátis não funciona.",
-            "Sem Codex, dá para levar o 1 Ano de Tokens junto na compra.",
+            "Sem Codex, dá para levar a Conta do Gemini junto na compra.",
             "A conta grátis do ChatGPT não funciona, precisa ser a paga.",
             "Serve se o seu ChatGPT for o Plus.",
             "O ChatGPT Pro também serve.",
-            "quem levou o 1 Ano de Tokens autoriza os tokens pelo link na área do cliente: entra na conta indicada e autoriza o Gemini",
+            "quem levou a Conta do Gemini autoriza pela Conta do Gemini",
             "autoriza pelo OAuth do Gemini",
             "O Gemini Advanced serve no lugar?",
             "Seu ChatGPT Plus precisa estar ativo.",
@@ -293,19 +294,11 @@ class AuditFilterAndOfferTests(unittest.TestCase):
         for text in allowed:
             self.assertEqual(sdr.leaked_terms([text]), [], text)
 
-    def test_one_year_of_tokens_and_gemini_pass(self):
-        """Decisão do Talles (07/10): o bump é o "1 Ano de Tokens" e o agente pode dizer que é o Gemini."""
-        for text in ["Sem Codex, dá para levar o 1 Ano de Tokens, R$ 100, pagamento único. Ele entra no lugar do Codex.",
-                     "O 1 Ano de Tokens é o Gemini.",
-                     "O 1 Ano de Tokens, que é o Gemini, R$ 100, pagamento único, entra no lugar do Codex.",
-                     "Eu rodo no Gemini.",
-                     "Quem levou o Gemini autoriza pelo próprio Gemini."]:
-            self.assertEqual(sdr.leaked_terms([text]), [], text)
-        self.assertEqual(sdr.leaked_terms(["O 1 Ano de Tokens roda no Hermes."]), ["hermes"])
-
     def test_what_runs_the_agent_is_still_blocked(self):
         for text, expected in [("Com 4 GB roda só o Hermes e mais 1 módulo.", ["hermes"]),
                                ("Roda num Docker na sua VPS.", ["docker"]),
+                               ("Eu rodo no Gemini.", ["gemini"]),
+                               ("Quem levou o Gemini autoriza pelo próprio Gemini.", ["gemini"]),
                                ("Eu rodo no ChatGPT Plus, igual ao seu.", ["modelo próprio"]),
                                ("Por trás de mim tem um ChatGPT Pro.", ["modelo próprio"])]:
             self.assertEqual(sdr.leaked_terms([text]), expected, text)

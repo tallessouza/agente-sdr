@@ -1,0 +1,77 @@
+
+[1] LEAD: E aí! Sou o @marina.escala e quero saber mais sobre o Raio-X
+    AGENTE: Oi! Sou o agente do Talles.
+    AGENTE: O que trava na sua operação quando você fica uma semana fora?
+    [diretivas] registro:oferta=raiox; registro:etapa_spiced=P; registro:instagram=@marina.escala; registro:proximo_passo=responder o que trava na operacao; registro:proximo_passo_em=2026-10-08
+
+[2] LEAD: vira um caos kkk suporte trava total. tenho 2 meninas no suporte mas dúvida mais técnica só eu sei responder, aí acumula tudo pra mim e começa aluna a reclamar
+    (revisor reescreveu: X5: carteirada antes da hora; X6: avanço fora do checklist SPICED e pergunta fora do roteiro)
+    rascunho: Entendo totalmente. Ficar presa respondendo dúvida técnica de aluna enquanto duas pessoas dependem de você pra destravar é o gargalo clássico que consome o seu dia. / Pra você ter uma ideia, o Talles cuidou de um SaaS com 30 mil usuários e 18 mil agentes, que contactou 9 milhões de números de WhatsApp. / Qual o seu @ no Instagram? E o da empresa, se for outro?
+    AGENTE: Entendo totalmente. Ficar presa respondendo dúvida técnica de aluna enquanto duas pessoas dependem de você pra destravar é o gargalo clássico que consome o seu dia.
+    AGENTE: Você já tentou resolver com ferramenta ou com freela? O que aconteceu?
+    [diretivas] registro:dor="suporte trava total. tenho 2 meninas no suporte mas dúvida mais técnica só eu sei responder, aí acumula tudo pra mim e começa aluna a reclamar"; registro:etapa_spiced=S; registro:proximo_passo=responder o @ da empresa; registro:proximo_passo_em=2026-10-08
+
+[3] LEAD: já sim... paguei 8 mil pra uma agência fazer um chatbot e foi horrível. entregaram um negócio super genérico que ninguém usa, só passei raiva
+    AGENTE: Entendo totalmente a frustração. Agência costuma entregar fluxo genérico que não conhece o seu conteúdo nem as dúvidas das alunas, e a bucha volta direto pro seu colo.
+    AGENTE: Pra você ter uma ideia, o Talles cuidou de um SaaS com 30 mil usuários e 18 mil agentes, que contactou 9 milhões de números de WhatsApp.
+    AGENTE: Qual o seu @ no Instagram? E o da empresa, se for outro?
+    [diretivas] registro:etapa_spiced=S; registro:proximo_passo=responder o @ da empresa; registro:proximo_passo_em=2026-10-08
+
+[4] LEAD: é o @marina.escala mesmo, tudo por lá
+    AGENTE: Perfeito, @marina.escala anotado.
+    AGENTE: Quando acumula dúvida técnica pra você e as alunas começam a reclamar, isso te custa mais tempo seu ou dinheiro do negócio?
+    [diretivas] registro:arroba=@marina.escala; registro:etapa_spiced=I; registro:proximo_passo=responder se custa mais tempo ou dinheiro; registro:proximo_passo_em=2026-10-08
+
+[5] LEAD: os dois né... consome meu dia todo e quando atrasa muito bate direto no bolso, aluna pede reembolso e a renovação cai. fora o estresse
+    AGENTE: Reembolso subindo e renovação caindo por causa de atraso no suporte machuca direto o caixa, além de travar o seu tempo que devia estar na estratégia.
+    AGENTE: Pra eu entender o tamanho: hoje o negócio fatura mais perto de R$ 50 mil, de R$ 100 mil ou acima de R$ 300 mil por mês?
+    [diretivas] registro:impacto=consome o dia todo, bate no bolso com pedido de reembolso e queda na renovação; registro:etapa_spiced=I; registro:proximo_passo=responder faixa de faturamento; registro:proximo_passo_em=2026-10-08
+
+[6] LEAD: mais perto de 300k, faturamos uns 280 mil hoje
+    AGENTE: Com uma operação de 280 mil por mês, esse gargalo no suporte não pode ficar queimando renovação e tomando o seu dia todo.
+    AGENTE: Resolver isso é prioridade deste mês, ou é pra mais adiante?
+    [diretivas] registro:faturamento=280 mil por mês; registro:triagem=qualificado; registro:etapa_spiced=C; registro:proximo_passo=responder prioridade; registro:proximo_passo_em=2026-10-08
+
+[7] LEAD: é pra agora. no último lançamento prometi pras alunas uma IA treinada no meu conteúdo e até agora nada, tem gente me cobrando já... preciso resolver isso logo
+    AGENTE: Então o que trava é o suporte acumulando dúvida técnica em você e a cobrança da IA prometida no lançamento, e isso te custa o seu dia todo, pedidos de reembolso e queda na renovação.
+    AGENTE: É isso, ou tem mais alguma coisa?
+    [diretivas] registro:evento_critico=prometeu IA no conteudo no ultimo lancamento e alunas cobrando, precisa resolver agora; registro:proximo_passo=confirmar espelho; registro:proximo_passo_em=2026-10-08
+
+[8] LEAD: é isso aí mesmo. tenho mais de 600 aulas gravadas paradas na plataforma que ninguém acha nada, e o próximo lançamento já tá vindo, então preciso destravar isso logo
+    AGENTE: Pro seu caso, o Talles constrói um fluxo de IA treinado no acervo das suas 600 aulas pra responder as dúvidas técnicas das alunas, rodando em paralelo ao suporte que você já tem hoje. Quem constrói é o Talles, pessoalmente.
+    AGENTE: Do seu lado, precisa só de um responsável e umas 10 horas do time no dia 1. Você assina o critério de pronto no primeiro dia e vê o fluxo rodando no dia 6; se no dia 7 o critério não for cumprido, a devolução é integral.
+    AGENTE: Esse caminho faz sentido pro seu caso?
+    [diretivas] registro:etapa_spiced=D; registro:proximo_passo=responder se o caminho faz sentido; registro:proximo_passo_em=2026-10-08
+
+[9] LEAD: faz sentido sim, mas fico com o pé atrás depois daquela furada com a agência... como vcs fazem com essas 600 aulas? não tem perigo de vazar meu conteúdo e dados das alunas não né?
+    AGENTE: Entendo totalmente o receio, ainda mais depois da furada com a agência. Quanto a isso você pode ficar tranquila: o ambiente é separado por cliente durante os 7 dias e quem acessa é só o Talles, sem nenhum terceirizado.
+    AGENTE: Todo o material de origem das suas 600 aulas é descartado no dia seguinte ao encerramento dos 7 dias, e toda a estrutura construída no fluxo fica com você.
+    AGENTE: Essa política de dados te deixa segura quanto ao seu conteúdo?
+    [diretivas] registro:objecao="como vcs fazem com essas 600 aulas? não tem perigo de vazar meu conteúdo e dados das alunas não né?"; registro:teste_objecao=2; registro:proximo_passo=responder se a politica de dados atende; registro:proximo_passo_em=2026-10-08
+
+[10] LEAD: sim, isso me deixa mais tranquila. 
+
+mas e quanto fica pra fazer isso? e meu suporte vai conseguir usar de boa sem travar tudo de novo?
+    AGENTE: Sobre o suporte: no dia 7 você recebe a ficha de operação pras suas duas meninas acionarem, conferirem e pararem o fluxo no dia a dia, sem nenhuma complicação técnica.
+    AGENTE: Deixa eu confirmar a agenda deste mês com o Talles e ele já te responde.
+    [diretivas] escalar:capacidade incerta na hora do preço=; registro:desfecho=escalado; registro:proximo_passo=aguardar Talles confirmar agenda; registro:proximo_passo_em=2026-10-08
+
+== escalou para o Talles; fim da simulação ==
+
+== registros ==
+{
+ "oferta": "raiox",
+ "etapa_spiced": "D",
+ "instagram": "@marina.escala",
+ "proximo_passo": "aguardar Talles confirmar agenda",
+ "proximo_passo_em": "2026-10-08",
+ "dor": "\"suporte trava total. tenho 2 meninas no suporte mas dúvida mais técnica só eu sei responder, aí acumula tudo pra mim e começa aluna a reclamar\"",
+ "arroba": "@marina.escala",
+ "impacto": "consome o dia todo, bate no bolso com pedido de reembolso e queda na renovação",
+ "faturamento": "280 mil por mês",
+ "triagem": "qualificado",
+ "evento_critico": "prometeu IA no conteudo no ultimo lancamento e alunas cobrando, precisa resolver agora",
+ "objecao": "\"como vcs fazem com essas 600 aulas? não tem perigo de vazar meu conteúdo e dados das alunas não né?\"",
+ "teste_objecao": "2",
+ "desfecho": "escalado"
+}

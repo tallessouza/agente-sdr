@@ -67,17 +67,14 @@ REEL_TAG_RE = re.compile(r"\[(R\d{1,4})\]", re.I)
 LEAK_TERMS = [
     t.strip() for t in os.getenv(
         "SDR_LEAK_TERMS",
-        "hermes,nous research,nousresearch,omniroute,antigravity,openai,chatgpt,gpt-,claude,anthropic,"
+        "hermes,nous research,nousresearch,omniroute,antigravity,gemini,openai,chatgpt,gpt-,claude,anthropic,"
         "chatwoot,evolution api,evolution go,evogo,openreply,portainer,traefik,docker,system prompt,"
         "soul.md,/opt/,evento_estruturado,x-hermes,api_server,skill_view,skills_list,skill_manage",
     ).split(",") if t.strip()
 ]
-# "gemini" is not a leak (decisão do Talles, 07/10): the R$ 100 bump, "1 Ano de
-# Tokens", is the Gemini and the agent may say so. The Gemini phrases below stay
-# only for an SDR_LEAK_TERMS override that still lists "gemini".
 # Product names the offer itself requires the agent to say (the lead's own AI
-# subscription). Removed before the leak check so "o plano pago do ChatGPT" can
-# be said, while "eu rodo no ChatGPT" is still caught.
+# subscription). Removed before the leak check so "a Conta do Gemini" or "o
+# plano pago do ChatGPT" can be said, while "eu rodo no Gemini" is still caught.
 OFFER_PHRASES = [
     t.strip() for t in os.getenv(
         "SDR_OFFER_PHRASES",
@@ -90,7 +87,7 @@ OFFER_PHRASES = [
 # ChatGPT Plus"): a first-person claim next to an AI name is still a leak.
 SELF_MODEL_RE = re.compile(
     r"\b(?:eu\s+(?:rodo|uso|funciono|sou|fui feit[oa]|rodo em cima)|rodo (?:no|na|em|com)|funciono (?:no|na|com|em)"
-    r"|meu modelo|por tras de mim|me (?:alimenta|move|roda))\b[^.!?\n]{0,40}\b(?:chatgpt|gpt|openai|claude|codex|modelo|llm)\b"
+    r"|meu modelo|por tras de mim|me (?:alimenta|move|roda))\b[^.!?\n]{0,40}\b(?:chatgpt|gemini|gpt|openai|claude|codex|modelo|llm)\b"
 )
 CREDENTIAL_MARK = "[credencial removida]"
 CREDENTIAL_NOTICE = os.getenv(

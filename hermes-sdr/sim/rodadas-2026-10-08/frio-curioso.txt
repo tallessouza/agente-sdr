@@ -1,0 +1,63 @@
+
+[1] LEAD: vi o reel, o que é isso?
+    AGENTE: Oi! Sou o agente do Talles.
+    AGENTE: É uma instalação que coloca um time de IA pra trabalhar com você direto no seu Telegram: ele conversa com você, escreve, organiza e lembra das suas tarefas, sem você precisar mexer em nada técnico.
+    AGENTE: O que você faz hoje no seu negócio? Te digo como fica no seu caso.
+    [diretivas] registro:oferta=instalador; registro:etapa_spiced=S; registro:proximo_passo=responder o que faz; registro:proximo_passo_em=2026-10-08
+
+[2] LEAD: Sou nutricionista, tenho consultório próprio aqui em Campinas. Atendo sozinha no dia a dia, só tenho uma secretária meio período que me ajuda com os agendamentos. 
+
+Como isso funcionaria na prática pro meu caso?
+    AGENTE: No seu dia a dia funciona direto no Telegram: você manda uma mensagem ou áudio pedindo algo e recebe pronto pra revisar.
+    AGENTE: Por exemplo, você pode mandar "monte um rascunho de orientações alimentares para paciente com intolerância a lactose e rotina corrida" ou "rascunhe 3 ideias de posts sobre mitos do jejum intermitente" e recebe em segundos.
+    AGENTE: Hoje, o que mais toma o seu tempo fora o atendimento das pacientes?
+    [diretivas] registro:situacao=nutricionista com consultorio proprio, atende sozinha, secretaria meio periodo para agendamentos; registro:etapa_spiced=P; registro:proximo_passo=responder o que mais toma tempo; registro:proximo_passo_em=2026-10-08
+
+[3] LEAD: O que mais me toma tempo com certeza é montar os planos alimentares depois que o paciente sai. Acabo levando uns 40 minutos em cada um. 
+
+Além disso, passo a noite respondendo dúvidas de pacientes no WhatsApp e quase nunca consigo manter o Instagram atualizado. Hoje eu até assino o ChatGPT Plus para ter ideias de posts, mas sinto que ainda gasto muito tempo nisso.
+    AGENTE: Sobre responder pacientes no WhatsApp: isso é o Atendimento no WhatsApp (R$ 3.000), um produto separado que não vem na instalação.
+    AGENTE: O que o time faz no seu Telegram é adiantar esses 40 minutos de cada plano alimentar e criar os posts: você manda "rascunhe a estrutura do plano para paciente com rotina corrida e sem glúten" ou "crie 3 posts sobre mitos do jejum com legenda pronta" e recebe na hora para revisar.
+    AGENTE: Você não precisa aprender nada técnico e nem abre terminal: preenche 5 campos e o time chega pronto no Telegram em até 48 h, com a garantia Pronto em 48 h. Quer que eu te mande o caminho?
+    [diretivas] registro:dor="montar os planos alimentares depois que o paciente sai. Acabo levando uns 40 minutos em cada um. Além disso, passo a noite respondendo dúvidas de pacientes no WhatsApp e quase nunca consigo manter o Instagram atualizado."; registro:tem_codex=sim; registro:etapa_spiced=P; registro:proximo_passo=confirmar se quer o caminho; registro:proximo_passo_em=2026-10-08
+
+[4] LEAD: Entendi, me ajudaria bastante nessa parte dos planos alimentares mesmo, economizaria muito o meu tempo. 
+
+E quanto custa essa instalação no Telegram?
+    AGENTE: A instalação é R$ 47, pagamento único. Por fora fica só o seu servidor, na faixa de R$ 120 a R$ 200 por mês. O Codex é o plano pago do ChatGPT que você já paga.
+    AGENTE: O caminho é por aqui https://instalador.talles.dev/antes. A página confere o servidor e a assinatura antes de liberar a compra. Consegue fazer hoje?
+    [diretivas] registro:preco_dado=sim; registro:link_enviado=sim; registro:etapa_spiced=fechamento; registro:proximo_passo=comprar pelo link; registro:proximo_passo_em=2026-10-07
+
+[5] LEAD: O valor é bem acessível. Mas como minha agenda hoje está cheia de atendimentos até mais tarde, vou dar uma olhada com calma no link no fim de semana. Obrigada pelas informações!
+    AGENTE: Entendo totalmente a correria com os atendimentos hoje.
+    AGENTE: É justamente nesses dias cheios que economizar 40 minutos em cada plano alimentar faz mais falta. Para liberar e preencher leva menos de 5 minutos, são só 5 campos.
+    AGENTE: Acha que consegue ver isso num intervalo entre pacientes hoje ou combinamos no sábado?
+    [diretivas] registro:objecao="como minha agenda hoje está cheia de atendimentos até mais tarde, vou dar uma olhada com calma no link no fim de semana"; registro:ramo_objecao=tempo; registro:proximo_passo=olhar o link e preencher os campos; registro:proximo_passo_em=2026-10-10
+
+[6] LEAD: Ah, se leva só 5 minutos mesmo, acho que consigo abrir agora no meu intervalo de almoço entre as consultas. Vou acessar o link que você mandou e dar uma olhada.
+    AGENTE: Perfeito!
+    AGENTE: A página só confere o servidor e a sua assinatura antes de liberar a compra. Depois do pagamento você entra na área do cliente com o mesmo e-mail, preenche os 5 campos, e em até 48 h o time te avisa "Pronto." no Telegram.
+    AGENTE: Qualquer dúvida no caminho é só me chamar por aqui. Consegue concluir agora no intervalo?
+    [diretivas] registro:proximo_passo=acessar o link e preencher os campos; registro:proximo_passo_em=2026-10-07
+
+[7] LEAD: Vou abrir aqui agora sim. Se eu tiver qualquer dúvida no preenchimento, te chamo por aqui. Obrigada!
+    AGENTE: Combinado! Fica à vontade para me chamar se precisar de qualquer coisa no caminho.
+    [diretivas] registro:proximo_passo=acessar o link e preencher os campos; registro:proximo_passo_em=2026-10-07
+
+[8] LEAD: Perfeito, obrigada! Tenha um bom dia.
+    (silêncio: nada enviado; fim da simulação)
+
+== registros ==
+{
+ "oferta": "instalador",
+ "etapa_spiced": "fechamento",
+ "proximo_passo": "acessar o link e preencher os campos",
+ "proximo_passo_em": "2026-10-07",
+ "situacao": "nutricionista com consultorio proprio, atende sozinha, secretaria meio periodo para agendamentos",
+ "dor": "\"montar os planos alimentares depois que o paciente sai. Acabo levando uns 40 minutos em cada um. Além disso, passo a noite respondendo dúvidas de pacientes no WhatsApp e quase nunca consigo manter o Instagram atualizado.\"",
+ "tem_codex": "sim",
+ "preco_dado": "sim",
+ "link_enviado": "sim",
+ "objecao": "\"como minha agenda hoje está cheia de atendimentos até mais tarde, vou dar uma olhada com calma no link no fim de semana\"",
+ "ramo_objecao": "tempo"
+}

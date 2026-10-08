@@ -1,0 +1,41 @@
+
+[1] LEAD: Oi! Queria ter mais informações sobre o time de IA
+    AGENTE: Oi! Sou o agente do Talles.
+    AGENTE: O time de IA chega pronto no seu Telegram pra conversar com você, escrever, organizar e lembrar das suas tarefas no dia a dia.
+    AGENTE: O que você faz? Te digo como fica no seu caso.
+    [diretivas] registro:oferta=instalador; registro:etapa_spiced=S; registro:proximo_passo=dizer o que faz; registro:proximo_passo_em=2026-10-07
+
+[2] LEAD: Sou professora de inglês online! Dou aulas particulares e para pequenos grupos de adultos iniciantes. Passo bastante tempo preparando material, exercícios e resumos pras aulas... Será que seria meu caso? 😊
+    AGENTE: É o seu caso, sim: você manda no Telegram "crie uma lista de exercícios e o resumo da aula de hoje para alunos iniciantes" e recebe o material pronto pra revisar.
+    AGENTE: A instalação é R$ 47, pagamento único. Por fora ficam o seu servidor, na faixa de R$ 120 a R$ 200 por mês, e o Codex, cerca de R$ 100 por mês, pagos direto a eles, no seu nome.
+    AGENTE: O caminho é por aqui https://instalador.talles.dev/antes. A página confere o servidor e a assinatura antes de liberar a compra. Consegue fazer hoje?
+    [diretivas] registro:situacao=professora de inglês online, aulas particulares e pequenos grupos de iniciantes; registro:dor="Passo bastante tempo preparando material, exercícios e resumos pras aulas"; registro:preco_dado=sim; registro:link_enviado=sim; registro:etapa_spiced=fechamento; registro:proximo_passo=comprar pelo link; registro:proximo_passo_em=2026-10-07
+
+[3] LEAD: [Reação recebida: ❤️ na mensagem 3EB0C4F21A9D]
+    AGENTE: Pra você já começar a liberar esse tempo de preparar material e resumos pras suas turmas: consegue acessar e fazer hoje?
+    [diretivas] registro:proximo_passo=comprar pelo link; registro:proximo_passo_em=2026-10-07
+
+[4] LEAD: Vou acessar e fazer agora à noite! 😊 O que acontece depois que eu fizer tudo pelo link?
+    AGENTE: Depois do pagamento você entra na área do cliente com o mesmo e-mail, preenche 5 campos e autoriza o acesso.
+    AGENTE: Em até 48 h o time te avisa "Pronto." no Telegram. Depois ele faz 15 perguntas e, no dia seguinte, já te manda a primeira Pauta do dia.
+    AGENTE: Consegue acessar e preencher ainda hoje à noite?
+    [diretivas] registro:proximo_passo=comprar pelo link e preencher o formulário; registro:proximo_passo_em=2026-10-07
+
+[5] LEAD: Maravilha! Super claro. Vou entrar agora mesmo no computador pra fazer tudo. Muito obrigada! 😊🙌
+    AGENTE: Perfeito! Fica à vontade pra me chamar quando terminar de preencher.
+    [diretivas] registro:proximo_passo=comprar e preencher o formulário; registro:proximo_passo_em=2026-10-07
+
+[6] LEAD: Combinado! Te chamo assim que terminar por aqui. Obrigada! 👋😊
+    (silêncio: nada enviado; fim da simulação)
+
+== registros ==
+{
+ "oferta": "instalador",
+ "etapa_spiced": "fechamento",
+ "proximo_passo": "comprar e preencher o formulário",
+ "proximo_passo_em": "2026-10-07",
+ "situacao": "professora de inglês online, aulas particulares e pequenos grupos de iniciantes",
+ "dor": "\"Passo bastante tempo preparando material, exercícios e resumos pras aulas\"",
+ "preco_dado": "sim",
+ "link_enviado": "sim"
+}

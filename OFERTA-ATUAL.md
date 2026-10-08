@@ -8,7 +8,7 @@ O cliente já tem uma VPS e a assinatura do Codex. A gente instala nela um time 
 
 ## 2. Pré-requisitos (obrigatórios antes de comprar)
 
-- **VPS:** Ubuntu, 8 GB de RAM, referência Hostinger KVM2, cerca de R$ 119/mês (COPY:47; SPEC:13). Com 4 GB roda só o Hermes e mais 1 módulo (SPEC:13).
+- **VPS:** Ubuntu, 8 GB de RAM, referência Hostinger **KVM 8** (decisão do Talles, 07/10), na faixa de R$ 120 a R$ 200/mês (COPY:47; SPEC:13). Com 4 GB roda só o Hermes e mais 1 módulo (SPEC:13).
 - **Codex:** plano pago do ChatGPT, Plus ou maior. Conta grátis não funciona. Referência: R$ 100/mês (SPEC:13; COPY:48; PÁG).
 - **Sem os dois, não compra:** `/antes` só libera o checkout com os 2 checks (SPEC:32, 210). Previsto mandar os vídeos de como contratar e lembrar em 24 h (SPEC:527), mas os vídeos ainda não existem (PÁG: "vídeo em breve").
 - Lembrar dos dois na hora da compra (sessão 6dfb301a 06/10 18:06).
