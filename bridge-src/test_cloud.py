@@ -230,7 +230,10 @@ class CloudTests(unittest.TestCase):
             self.assertEqual(meta["placar"], {})  # a bait approved as utility is not scored yet
             self.assertEqual(th.build_pool(approved, meta), [])  # and never sent with the bait text
             with patch.object(th, "graph", new=AsyncMock(return_value={"success": True})) as graph:
-                edited = asyncio.run(th.edit_baits(approved, meta))
+                self.assertEqual(asyncio.run(th.edit_baits(approved, meta)), [])  # off by default: never edited
+                graph.assert_not_called()
+                with patch.object(th, "BAIT_ENABLED", True):
+                    edited = asyncio.run(th.edit_baits(approved, meta))
             self.assertEqual(edited, ["isca_001"])
             self.assertEqual(graph.await_args.args[:2], ("POST", "77"))
             self.assertEqual(graph.await_args.args[2]["components"][0]["text"], "Oi, {{1}}! Consigo falar com alguém agora? Tenho uma dúvida.")
@@ -251,6 +254,27 @@ class CloudTests(unittest.TestCase):
             report = asyncio.run(th.guard_number())
         self.assertEqual(report["alarme"], "qualidade do número RED")
         self.assertEqual((prospeccao.kv_get("prospeccao_pausada"), prospeccao.kv_get("pausa_motivo")), ("1", "qualidade do número RED"))
+
+    def test_every_marketing_template_is_cleaned_and_scored(self):
+        import template_health as th
+        body = [{"type": "BODY", "text": "Oi, {{1}}! Tem alguém por aí? Tenho uma dúvida."}]
+        templates = [
+            {"id": "1", "name": "vencedor_001", "status": "APPROVED", "category": "UTILITY", "language": "pt_BR", "components": body},
+            {"id": "2", "name": "vencedor_002", "status": "APPROVED", "category": "MARKETING", "language": "pt_BR", "components": body},
+            {"id": "3", "name": "frase_var_001", "status": "PENDING", "category": "MARKETING", "language": "pt_BR", "components": body},
+            {"id": "4", "name": "frase_var_002", "status": "PENDING", "category": "UTILITY", "language": "pt_BR", "components": body},
+        ]
+        with patch.object(th, "META_FILE", Path(self.tmp.name) / "meta.json"):
+            meta = th.load_meta()
+            for t in templates:
+                meta["templates"][t["name"]] = {"scheme": t["name"].rsplit("_", 1)[0], "params": ["saudacao_min"], "estado": "pronto"}
+            th.learn(templates, meta)
+            with patch.object(th, "graph", new=AsyncMock(return_value={"success": True})) as graph:
+                deleted = asyncio.run(th.trim_marketing(templates, meta))
+        self.assertEqual(sorted(deleted), ["frase_var_001", "vencedor_002"])
+        self.assertEqual(graph.await_count, 2)
+        self.assertEqual(meta["placar"]["frase_var"]["marketing"], 1)  # pending marketing still scored
+        self.assertEqual(meta["placar"]["vencedor"], {"utility": 1, "marketing": 1})
 
     def test_bait_tactic_is_off_unless_enabled(self):
         import template_health as th

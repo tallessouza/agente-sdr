@@ -33,6 +33,8 @@ HEALTH_SECONDS = int(os.getenv("TEMPLATE_HEALTH_SECONDS", "900"))
 UTILITY_TARGET = int(os.getenv("TEMPLATE_UTILITY_TARGET", "20"))
 BATCH = int(os.getenv("TEMPLATE_BATCH", "30"))
 MARKETING_MAX_SHARE = float(os.getenv("MARKETING_MAX_SHARE", "0.2"))
+# Share of the approved stock allowed to stay as marketing; 0 = every marketing template is deleted.
+MARKETING_KEEP_SHARE = float(os.getenv("MARKETING_KEEP_SHARE", "0"))
 
 # Templates created before the generator: what fills their variables comes from the name.
 LEGACY_PARAMS = [("abordagem_a", ["abertura_teste"]), ("abordagem_b", ["frase_teste"]), ("teste_atendimento_", ["saudacao_min"])]
@@ -192,6 +194,8 @@ def build_pool(templates: list[dict[str, Any]], meta: dict[str, Any]) -> list[di
 
 
 async def edit_baits(templates: list[dict[str, Any]], meta: dict[str, Any]) -> list[str]:
+    if not BAIT_ENABLED:
+        return []  # baits left from an earlier run stay unused (never sent: build_pool skips them)
     edited = []
     for t in templates:
         info = meta["templates"].get(t.get("name", ""))
@@ -211,14 +215,23 @@ async def edit_baits(templates: list[dict[str, Any]], meta: dict[str, Any]) -> l
 
 
 async def trim_marketing(templates: list[dict[str, Any]], meta: dict[str, Any]) -> list[str]:
-    """Keep approved marketing within 20% of the approved first-contact stock (the newest stay)."""
+    """Delete first-contact templates Meta put in MARKETING, approved or still pending (Talles: no need to keep them).
+
+    MARKETING_KEEP_SHARE > 0 keeps that share of the approved stock as marketing (the newest), if ever wanted.
+    """
     pool = build_pool(templates, meta)
     utility = sum(t["category"] == "UTILITY" for t in pool)
-    marketing = [t for t in templates if t.get("status") == "APPROVED" and t.get("category") == "MARKETING" and params_for(t.get("name", ""), meta) is not None]
-    allowed = int(utility * MARKETING_MAX_SHARE / (1 - MARKETING_MAX_SHARE))
-    marketing.sort(key=lambda t: int(t.get("id") or 0), reverse=True)
+    marketing = [t for t in templates if t.get("status") in {"APPROVED", "PENDING"} and t.get("category") == "MARKETING"
+                 and params_for(t.get("name", ""), meta) is not None]
+    allowed = int(utility * MARKETING_KEEP_SHARE / (1 - MARKETING_KEEP_SHARE)) if MARKETING_KEEP_SHARE < 1 else len(marketing)
+    marketing.sort(key=lambda t: (t.get("status") == "APPROVED", int(t.get("id") or 0)), reverse=True)
     deleted = []
     for t in marketing[allowed:]:
+        info = meta["templates"].get(t["name"])
+        if info and not info.get("contado"):  # a pending one Meta already labeled marketing still counts for the scheme
+            info["contado"] = "marketing"
+            placar = meta["placar"].setdefault(info["scheme"], {})
+            placar["marketing"] = placar.get("marketing", 0) + 1
         try:
             await graph("DELETE", f"{WABA}/message_templates?name={t['name']}&hsm_id={t['id']}")
             deleted.append(t["name"])
