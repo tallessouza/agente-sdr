@@ -70,7 +70,13 @@ def scheme_text(scheme: str, rng: random.Random) -> tuple[str, list[str]]:
     raise ValueError(scheme)
 
 
-SCHEMES = ["vencedor", "pergunta_var", "abertura_var", "frase_var", "isca"]
+# "isca" (approve a neutral text, edit it later) is the tactic Meta is most likely to punish: off unless asked for.
+BAIT_ENABLED = os.getenv("TEMPLATE_BAIT_ENABLED", "0") == "1"
+SCHEMES = ["vencedor", "pergunta_var", "abertura_var", "frase_var"] + (["isca"] if BAIT_ENABLED else [])
+PHONE_ID = os.getenv("WA_CLOUD_PHONE_ID", "")
+# Number states that stop the queue before Meta restricts the account.
+BAD_QUALITY = {"RED", "LOW"}
+BAD_STATUS = {"FLAGGED", "RESTRICTED", "BANNED", "DISCONNECTED"}
 
 
 def load_meta() -> dict[str, Any]:
@@ -238,7 +244,43 @@ async def submit(batch: list[dict[str, Any]], meta: dict[str, Any]) -> list[str]
     return sent
 
 
+def number_alarm(number: dict[str, Any]) -> str | None:
+    """Why the queue must stop now, from Meta's view of the number; None when it can go on."""
+    quality = str(number.get("quality_rating") or "").upper()
+    status = str(number.get("status") or "").upper()
+    health = str(((number.get("health_status") or {}).get("can_send_message")) or "").upper()
+    if quality in BAD_QUALITY:
+        return f"qualidade do número {quality}"
+    if status in BAD_STATUS:
+        return f"número {status}"
+    if health == "BLOCKED":
+        return "Meta bloqueou o envio (health_status)"
+    return None
+
+
+async def guard_number() -> dict[str, Any]:
+    """Pause the prospect queue when the number's quality or state turns bad (protects the account)."""
+    if not PHONE_ID:
+        return {}
+    import prospeccao  # late import: keeps this module usable on its own
+    number = await graph("GET", f"{PHONE_ID}?fields=quality_rating,messaging_limit_tier,status,health_status")
+    alarm = number_alarm(number)
+    if alarm and prospeccao.kv_get("prospeccao_pausada") != "1":
+        prospeccao.kv_set("prospeccao_pausada", "1")
+        prospeccao.kv_set("pausa_motivo", alarm)
+        logger.warning("Prospect queue paused to protect the number: %s", alarm)
+    elif str(number.get("quality_rating") or "").upper() in {"YELLOW", "MEDIUM"}:
+        logger.warning("Number quality is %s: watch the blocks before raising the pace", number.get("quality_rating"))
+    return {"qualidade": number.get("quality_rating"), "teto_meta": number.get("messaging_limit_tier"),
+            "status": number.get("status"), "alarme": alarm}
+
+
 async def check_once(sync_chatwoot: Any = None) -> dict[str, Any]:
+    try:
+        numero = await guard_number()
+    except Exception as exc:
+        logger.warning("Number health check failed: %s", exc)
+        numero = {"erro": str(exc)[:200]}
     meta = load_meta()
     templates = await list_templates()
     learn(templates, meta)
@@ -256,7 +298,7 @@ async def check_once(sync_chatwoot: Any = None) -> dict[str, Any]:
     save_meta(meta)
     if sync_chatwoot:
         await sync_chatwoot()
-    report = {"quando": time.time(), "utility_aprovados": utility, "marketing_aprovados": sum(t["category"] == "MARKETING" for t in pool),
+    report = {"quando": time.time(), "numero": numero, "utility_aprovados": utility, "marketing_aprovados": sum(t["category"] == "MARKETING" for t in pool),
               "pendentes": pending, "enviados_para_aprovacao": len(submitted), "iscas_editadas": edited, "marketing_apagados": deleted,
               "placar": meta["placar"]}
     logger.warning("Template health: %s", json.dumps(report, ensure_ascii=False))

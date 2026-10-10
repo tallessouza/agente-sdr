@@ -239,12 +239,29 @@ class CloudTests(unittest.TestCase):
             self.assertEqual(meta["placar"]["isca"]["utility"], 1)
             self.assertEqual([t["name"] for t in th.build_pool(after, meta)], ["isca_001"])
 
+    def test_bad_number_quality_pauses_the_queue(self):
+        import template_health as th
+        self.assertIsNone(th.number_alarm({"quality_rating": "GREEN", "status": "CONNECTED", "health_status": {"can_send_message": "AVAILABLE"}}))
+        self.assertIsNone(th.number_alarm({"quality_rating": "YELLOW", "status": "CONNECTED"}))
+        self.assertEqual(th.number_alarm({"quality_rating": "RED", "status": "CONNECTED"}), "qualidade do número RED")
+        self.assertEqual(th.number_alarm({"quality_rating": "GREEN", "status": "FLAGGED"}), "número FLAGGED")
+        self.assertIn("bloqueou", th.number_alarm({"status": "CONNECTED", "health_status": {"can_send_message": "BLOCKED"}}))
+        prospeccao.kv_set("prospeccao_pausada", "0")
+        with patch.object(th, "PHONE_ID", "1"), patch.object(th, "graph", new=AsyncMock(return_value={"quality_rating": "RED", "status": "CONNECTED"})):
+            report = asyncio.run(th.guard_number())
+        self.assertEqual(report["alarme"], "qualidade do número RED")
+        self.assertEqual((prospeccao.kv_get("prospeccao_pausada"), prospeccao.kv_get("pausa_motivo")), ("1", "qualidade do número RED"))
+
+    def test_bait_tactic_is_off_unless_enabled(self):
+        import template_health as th
+        self.assertNotIn("isca", th.SCHEMES)
+
     def test_scheme_weights_follow_utility_success(self):
         import template_health as th
         meta = {"placar": {"vencedor": {"utility": 8, "marketing": 2}, "frase_var": {"utility": 0, "marketing": 10}}, "templates": {}, "usados": []}
         weights = dict(zip(th.SCHEMES, th.scheme_weights(meta)))
-        self.assertGreater(weights["vencedor"], weights["isca"])
-        self.assertGreater(weights["isca"], weights["frase_var"])
+        self.assertGreater(weights["vencedor"], weights["pergunta_var"])  # untried schemes sit in the middle
+        self.assertGreater(weights["pergunta_var"], weights["frase_var"])
         self.assertGreater(weights["frase_var"], 0)
 
     def test_queue_pauses_itself_when_no_template_is_allowed(self):
