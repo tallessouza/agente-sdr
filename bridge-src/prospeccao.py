@@ -251,6 +251,32 @@ def origin(jid: str) -> dict[str, Any] | None:
     return result
 
 
+def owner_test_persona(rng: random.Random | None = None) -> dict[str, Any]:
+    """Data of a real business still in the queue, copied (never touched) to dress the owner's test."""
+    with connect() as c:
+        rows = c.execute("SELECT dados FROM sdr_prospects WHERE status='fila' ORDER BY RANDOM() LIMIT 20").fetchall()
+    for (raw,) in rows:
+        data = json.loads(raw or "{}")
+        if data.get("nome"):
+            return data
+    return {"nome": "Clínica Sorriso (teste)", "nicho": "clínica odontológica", "cidade": "São José", "uf": "SC",
+            "horario_resumo": "seg a sex 8h–18h, sáb 8h–12h"}
+
+
+def simulate_owner_test(numero: str, jid: str, conversation: int, data: dict[str, Any], text: str, now: float | None = None) -> None:
+    """The owner plays a tested business: a prospect row as if the test had just gone out to them."""
+    now = time.time() if now is None else now
+    with connect() as c:
+        c.execute("DELETE FROM sdr_prospects WHERE numero=?", (numero,))
+        c.execute("INSERT INTO sdr_prospects(numero,dados,status,enfileirado,jid,conversation,texto,enviado_em,erro) VALUES (?,?,?,?,?,?,?,?,?)",
+                  (numero, json.dumps({**data, "teste_do_dono": True}, ensure_ascii=False), "enviado", now, jid, conversation, text, now, "simulação do dono"))
+
+
+def clear_owner_test(numero: str) -> None:
+    with connect() as c:
+        c.execute("DELETE FROM sdr_prospects WHERE numero=? AND erro='simulação do dono'", (numero,))
+
+
 def replied(jid: str, ts: float | None = None) -> bool:
     """First message of a tested business after the test: keep the time (the agent may later say it was automatic)."""
     row = for_jid(jid)

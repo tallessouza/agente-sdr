@@ -9,8 +9,10 @@ import re
 import sqlite3
 import time
 import uuid
+import cloud
 import handover
 import prospeccao
+import template_health
 import random
 import sdr
 import tempfile
@@ -68,6 +70,10 @@ STT_LANGUAGE = os.getenv("BRIDGE_STT_LANGUAGE", "pt") or None
 OCR_ENABLED = os.getenv("BRIDGE_OCR_ENABLED", "true").lower() not in {"0", "false", "no"}
 OCR_LANGUAGE = os.getenv("BRIDGE_OCR_LANGUAGE", "por+eng") or "por+eng"
 MEDIA_DIR = DB_PATH.parent / "media"
+# A queued WhatsApp message older than this is stale (a "sorry for the delay" a day later): expire it unsent.
+OUTBOX_MAX_AGE_SECONDS = int(os.getenv("OUTBOX_MAX_AGE_SECONDS", "7200"))
+# "evolution" (unofficial, test text) or "cloud" (official number through the Chatwoot inbox, approved template).
+PROSPECT_CHANNEL = os.getenv("PROSPECT_CHANNEL", "evolution").strip().lower()
 
 app = FastAPI(title="Evolution Go ↔ Chatwoot bridge")
 logger = logging.getLogger("bridge")
@@ -91,6 +97,8 @@ async def start_background_workers() -> None:
     _outbox_task = asyncio.create_task(outbox_worker(), name="evolution-outbox")
     _followup_task = asyncio.create_task(followup_worker(), name="sdr-followups")
     _prospect_task = asyncio.create_task(prospect_worker(), name="prospeccao")
+    if template_health.TOKEN and template_health.WABA:
+        asyncio.create_task(template_health_worker(), name="template-health")
 
 
 @app.on_event("shutdown")
@@ -695,6 +703,8 @@ def _outbox_claim_due(limit: int = 10) -> list[tuple[int, str, str, dict[str, An
     conn = db()
     try:
         conn.execute("BEGIN IMMEDIATE")
+        conn.execute("UPDATE outbox SET status='expired', last_error='expirada sem envio' WHERE status='pending' AND created_at<?",
+                     (time.time() - OUTBOX_MAX_AGE_SECONDS,))
         rows = conn.execute("SELECT id,kind,number,payload,attempts FROM outbox WHERE status='pending' AND next_attempt<=? ORDER BY id LIMIT ?", (time.time(), limit)).fetchall()
         for row in rows:
             conn.execute("UPDATE outbox SET status='inflight' WHERE id=?", (row[0],))
@@ -966,6 +976,30 @@ def hold_profile_escalation(conversation_id: int, parts: list[str], directives: 
     return kept, [d for d in directives if d is not escalation] + [{"type": "registro", "campo": "perfil_raiox", "valor": "sim"}]
 
 
+async def agent_presence(jid: str, state: str = "composing") -> None:
+    """Typing indicator; the official inbox has none through Chatwoot, so the typing pause alone stays."""
+    if cloud.is_cloud(jid):
+        return
+    await send_presence(jid_number(jid), state)
+
+
+async def agent_send_text(jid: str, source_id: str, conversation_id: int, text: str, reply_to: str | None = None) -> None:
+    """One message from the agent on the contact's own channel, mirrored in Chatwoot exactly once."""
+    if cloud.is_cloud(jid):
+        await cloud.post_message(conversation_id, text)  # Chatwoot sends it through the Cloud API
+        return
+    await send_evolution(jid_number(jid), text, reply_to=reply_to)
+    await add_chatwoot_message(source_id, conversation_id, text, private=False, outgoing=True, suppress_evolution=True)
+
+
+async def agent_send_media(jid: str, source_id: str, conversation_id: int, media: tuple[bytes, str, str]) -> None:
+    if cloud.is_cloud(jid):
+        await cloud.post_message(conversation_id, "", media=media)
+        return
+    await send_evolution_media(jid_number(jid), media, retry=False)
+    await add_chatwoot_message(source_id, conversation_id, "", private=False, outgoing=True, media=media, suppress_evolution=True)
+
+
 def lead_interrupted(jid: str) -> bool:
     """The lead wrote again while this reply was being prepared or sent."""
     return bool(hermes_pending.get(jid))
@@ -1007,24 +1041,22 @@ async def deliver_agent_reply(jid: str, source_id: str, conversation_id: int, re
             logger.exception("Failed to store blocked reply for conversation=%s", conversation_id)
     # Deterministic style rule from the owner: no dashes or colons chaining sentences.
     parts = [sdr.plain_style(part) for part in parts]
-    number = jid_number(jid)
     sent: list[str] = []
     for index, part in enumerate(parts):
         if lead_interrupted(jid):
             break
-        await send_presence(number)
+        await agent_presence(jid)
         await asyncio.sleep(sdr.typing_seconds(part))
         if lead_interrupted(jid):
             break
-        await send_evolution(number, part, reply_to=reply_to_id if index == 0 else None)
-        await add_chatwoot_message(source_id, conversation_id, part, private=False, outgoing=True, suppress_evolution=True)
+        await agent_send_text(jid, source_id, conversation_id, part, reply_to=reply_to_id if index == 0 else None)
         sdr.touch_activity(conversation_id, agent=True)
         sent.append(part)
     # Hermes keeps its draft in the session; tell it what the lead really got.
     sdr.record_correction(conversation_id, draft, sent, "interrompida pelo lead" if len(sent) < len(parts) else "review_or_guardrail")
     if len(sent) < len(parts):
         logger.info("SDR reply interrupted by the lead conversation=%s sent=%d/%d", conversation_id, len(sent), len(parts))
-        await send_presence(number, "paused")
+        await agent_presence(jid, "paused")
         if not sent:
             return False
         # Part of the answer went out: keep the facts it established, skip the
@@ -1035,8 +1067,7 @@ async def deliver_agent_reply(jid: str, source_id: str, conversation_id: int, re
         return True
     photos = [sdr.load_media(d["nome"]) for d in directives if d["type"] == "foto"]
     for attachment in [*reply_media, *[p for p in photos if p]]:
-        await send_evolution_media(number, attachment, retry=False)
-        await add_chatwoot_message(source_id, conversation_id, "", private=False, outgoing=True, media=attachment, suppress_evolution=True)
+        await agent_send_media(jid, source_id, conversation_id, attachment)
     for directive in directives:
         if directive["type"] == "registro":
             await sdr.record(conversation_id, directive["campo"], directive["valor"])
@@ -1181,6 +1212,9 @@ async def process_followups_once(now: float | None = None) -> None:
         if not contact or (sdr.is_owner(contact[0]) and not sdr.owner_test_run(contact[0])): sdr.update_followup(fid,"cancelled","owner_or_missing"); continue
         last_lead, _ = sdr.activity(conv)
         if last_lead and last_lead > after_ts: sdr.update_followup(fid,"cancelled","lead_message"); continue
+        if cloud.is_cloud(contact[0]) and not cloud.window_open(last_lead, now):
+            # Official number: free text after 24 h of silence is refused by Meta (a template would be needed).
+            sdr.update_followup(fid, "cancelled", "janela_24h"); continue
         try:
             if await handover.paused(conv): sdr.update_followup(fid,"cancelled","paused"); continue
         except Exception: continue
@@ -1198,12 +1232,17 @@ async def process_followups_once(now: float | None = None) -> None:
                 logger.exception("Failed to store blocked follow-up for conversation=%s", conv)
             continue
         text = sdr.plain_style(text)
+        # Claim the touch before sending: a failed send must never be retried by the next pass
+        # (on 10/10 a dead number turned one touch into 128 queued copies).
+        sdr.update_followup(fid, "sending")
         try:
-            number = jid_number(contact[0])
-            await send_presence(number, "composing")
+            await agent_presence(contact[0], "composing")
             await asyncio.sleep(sdr.typing_seconds(text))
-            await send_evolution(number, text)
-            await add_chatwoot_message(contact[1], conv, text, outgoing=True, suppress_evolution=True)
+            if cloud.is_cloud(contact[0]):
+                await cloud.post_message(conv, text)
+            else:
+                await send_evolution(jid_number(contact[0]), text, retry=True)  # retry=True: no outbox copy
+                await add_chatwoot_message(contact[1], conv, text, outgoing=True, suppress_evolution=True)
             # Visible to the SDR on the next turn. The silence cadence stays
             # anchored on the last conversational agent reply (last_agent_ts),
             # so a touch never restarts the cadence.
@@ -1212,7 +1251,8 @@ async def process_followups_once(now: float | None = None) -> None:
             # One touch per silence window: anything else still queued for this
             # conversation (e.g. decided overnight) is superseded.
             sdr.cancel_followups(conv, "superseded")
-        except Exception:
+        except Exception as exc:
+            sdr.update_followup(fid, "failed", str(exc)[:200])
             logger.exception("Follow-up %s failed for conversation=%s", fid, conv)
 
 async def followup_worker() -> None:
@@ -1317,6 +1357,8 @@ async def prospect_once(now: float | None = None, numero: str | None = None) -> 
     if not prospeccao.claim(number, now):
         return "ja_em_andamento"  # someone else claimed it: never twice
     prospeccao.kv_set("proximo_envio", str(now + prospeccao.next_gap()))
+    if PROSPECT_CHANNEL == "cloud":
+        return await prospect_cloud(number, data, now)
     try:
         check = await check_whatsapp(number)
     except Exception as exc:
@@ -1369,9 +1411,83 @@ async def prospect_once(now: float | None = None, numero: str | None = None) -> 
     return "enviado"
 
 
+async def prospect_cloud(number: str, data: dict[str, Any], now: float) -> str:
+    """First contact through the official number: the approved template, sent by the Chatwoot inbox.
+
+    No WhatsApp lookup is needed (a number without WhatsApp comes back as a failed message, see
+    cloud_inbox_event). The claim already happened, so this runs at most once per number.
+    """
+    if not cloud.enabled():
+        prospeccao.update(number, status="fila", erro="canal oficial sem CLOUD_INBOX_ID")
+        return "erro"
+    jid = cloud.jid_for(number)
+    conn = db()
+    known = conn.execute(f"SELECT 1 FROM contacts WHERE jid IN ({','.join('?' * (1 + len(cloud.evolution_jids(number))))})",
+                         (jid, *cloud.evolution_jids(number))).fetchone()
+    conn.close()
+    if not jid or sdr.is_owner(jid) or known:
+        prospeccao.update(number, status="ja_contato", jid=jid)
+        return "ja_contato"
+    # At least 80% of first contacts go out as UTILITY; MARKETING is a fallback capped at 20% of the day.
+    day = datetime_local(now).strftime("%Y-%m-%d")
+    utility_sent = int(prospeccao.kv_get(f"tpl:{day}:UTILITY") or 0)
+    marketing_sent = int(prospeccao.kv_get(f"tpl:{day}:MARKETING") or 0)
+    category = template_health.choose_category(cloud.approved_templates(), utility_sent, marketing_sent)
+    if not category:
+        prospeccao.update(number, status="fila")
+        prospeccao.kv_set("prospeccao_pausada", "1")
+        prospeccao.kv_set("pausa_motivo", "sem template utility aprovado e marketing no limite de 20% do dia")
+        logger.warning("Prospect queue paused: no utility template and marketing at its share")
+        return "sem_template"
+    # {{1}} carries the greeting and/or the customer-like test question.
+    text, template = cloud.pick_template({**data, **cloud.test_fields(prospeccao.greeting(datetime_local(now)).lower())}, category=category)
+    try:
+        source_id, conversation_id, internal_id = await cloud.open_conversation(number, str(data.get("nome") or ""))
+    except Exception as exc:
+        # Nothing went out yet: back to the queue.
+        logger.exception("Prospect cloud conversation failed number=%s", number)
+        prospeccao.update(number, status="fila", erro="sem envio: " + str(exc)[:200])
+        return "erro"
+    conn = db()
+    conn.execute("INSERT OR REPLACE INTO contacts (jid, source_id, conversation_id, internal_id) VALUES (?,?,?,?)",
+                 (jid, source_id, conversation_id, internal_id))
+    conn.commit(); conn.close()
+    prospeccao.update(number, status="enviando", jid=jid, conversation=conversation_id, texto=text, enviado_em=now)
+    try:
+        await cloud.post_message(conversation_id, text, template=template)
+    except Exception as exc:
+        # Unknown outcome: Chatwoot may have queued it. Never retried (at most once).
+        logger.exception("Prospect cloud send failed number=%s", number)
+        prospeccao.update(number, status="erro", erro="envio incerto: " + str(exc)[:200])
+        return "erro"
+    prospeccao.kv_set(f"tpl:{day}:{category}", str((utility_sent if category == "UTILITY" else marketing_sent) + 1))
+    current = prospeccao.for_jid(jid)
+    if current and current.get("status") == "enviando":
+        prospeccao.update(number, status="enviado")
+    try:
+        await sdr.add_label(conversation_id, prospeccao.PROSPECT_LABEL)
+        resumo = ", ".join(f"{k}: {v}" for k, v in data.items())
+        await sdr.private_note(conversation_id, f"🔎 Prospecção (número oficial): template {template['name']} ({category}).\n" + resumo)
+    except Exception:
+        logger.exception("Prospect Chatwoot bookkeeping failed conversation=%s", conversation_id)
+    logger.info("Prospect sent number=%s conversation=%s channel=cloud", number, conversation_id)
+    return "enviado"
+
+
 def datetime_local(ts: float):
     from datetime import datetime
     return datetime.fromtimestamp(ts, sdr.BUSINESS_TZ)
+
+
+async def template_health_worker() -> None:
+    while True:
+        try:
+            await template_health.check_once(sync_chatwoot=cloud.sync_templates if cloud.enabled() else None)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("template health iteration failed")
+        await asyncio.sleep(template_health.HEALTH_SECONDS)
 
 
 async def prospect_worker() -> None:
@@ -1798,11 +1914,131 @@ async def evolution_webhook(request: Request) -> dict[str, bool]:
     return {"received": True}
 
 
+async def cloud_owner_test(jid: str, source_id: str, conversation_id: int, command: str) -> None:
+    """#teste on the official number replays a real dispatch with the owner as the business; #fim undoes it.
+
+    A fresh Chatwoot conversation keeps labels, records and the agent session clean (like #teste on Evolution).
+    The business data is a copy of a real queued business, so the agent works from a real dossier.
+    """
+    number = jid_number(jid)
+    sdr.cancel_followups(conversation_id, "owner_test_" + command.lstrip("#"))
+    hermes_pending.pop(jid, None)
+    if command == sdr.OWNER_TEST_STOP:
+        sdr.stop_owner_test(jid)
+        prospeccao.clear_owner_test(number)
+        try:
+            await cloud.post_message(conversation_id, "🧪 Simulação encerrada. Mensagens daqui voltam a ser tratadas como do dono.")
+        except Exception:
+            logger.exception("Owner test confirmation failed on the official inbox")
+        return
+    run = sdr.start_owner_test(jid)
+    persona = prospeccao.owner_test_persona()
+    now = time.time()
+    text, _template = cloud.pick_template({**persona, **cloud.test_fields(prospeccao.greeting(datetime_local(now)).lower())})
+    try:
+        await cloud.post_message(conversation_id, f"🧪 Simulação {run}: você é \"{persona.get('nome')}\" ({persona.get('nicho') or 'negócio'}, "
+                                                  f"{persona.get('cidade') or ''}). Na conversa nova, responda ao teste como o negócio. #fim encerra.")
+        await cloud.resolve_conversation(conversation_id)
+        source_id, new_conversation, internal_id = await cloud.open_conversation(number, str(persona.get("nome") or number))
+        conn = db()
+        conn.execute("INSERT OR REPLACE INTO contacts (jid, source_id, conversation_id, internal_id) VALUES (?,?,?,?)", (jid, source_id, new_conversation, internal_id))
+        conn.commit(); conn.close()
+        prospeccao.simulate_owner_test(number, jid, new_conversation, persona, text, now)
+        # Free text, not the template: the owner wrote just now, so the 24 h window is open.
+        await cloud.post_message(new_conversation, text)
+        await sdr.add_label(new_conversation, prospeccao.PROSPECT_LABEL)
+        await sdr.private_note(new_conversation, "🧪 Simulação do dono no número oficial. Negócio usado como personagem: "
+                               + ", ".join(f"{k}: {v}" for k, v in persona.items()))
+    except Exception:
+        logger.exception("Owner test setup failed on the official inbox")
+
+
+async def cloud_inbox_event(payload: dict[str, Any]) -> None:
+    """One Chatwoot event of the official inbox, mapped onto the same pipeline the Evolution webhook feeds."""
+    event = payload.get("event")
+    attributes = cloud.attributes_of(payload)
+    conversation_id, internal_id = cloud.conversation_of(payload)
+    if not conversation_id:
+        return
+    conn = db(); row = conn.execute("SELECT jid, source_id FROM contacts WHERE conversation_id=?", (conversation_id,)).fetchone(); conn.close()
+    if event == "message_updated":
+        # A first contact Meta refused (no WhatsApp, blocked): mark the business instead of waiting for a reply.
+        if str(payload.get("status") or "") == "failed" and row and attributes.get("bridge_agent"):
+            current = prospeccao.for_jid(row[0])
+            if current and current.get("status") in {"enviado", "enviando"} and not current.get("respondeu_em"):
+                erro = str(attributes.get("external_error") or "falha na entrega")[:200]
+                prospeccao.update(current["numero"], status="sem_whatsapp" if "131026" in erro else "erro", erro=erro)
+        return
+    if event != "message_created" or payload.get("private"):
+        return
+    message_type = payload.get("message_type")
+    content = str(payload.get("content") or "")
+    if message_type in {"outgoing", 1, "1"}:
+        if attributes.get("bridge_agent") or attributes.get("skip_evolution_bridge"):
+            return  # the agent's own message, already accounted for
+        # Someone of the team answered in Chatwoot: the agent stops, exactly like a reply from the phone.
+        handover.record(conversation_id, f"cw:{payload.get('id')}", "atendente_humano", content or "[anexo enviado pelo atendente]")
+        await handover.pause(conversation_id)
+        sdr.touch_activity(conversation_id, agent=True)
+        return
+    if message_type not in {"incoming", 0, "0"}:
+        return
+    if row:
+        jid, source_id = row[0], row[1]
+    else:
+        number = cloud.sender_number(payload)
+        jid = cloud.jid_for(number)
+        if not jid:
+            logger.warning("Official inbox message without a phone number conversation=%s", conversation_id)
+            return
+        source_id = number
+        conn = db()
+        conn.execute("INSERT OR REPLACE INTO contacts (jid, source_id, conversation_id, internal_id) VALUES (?,?,?,?)",
+                     (jid, source_id, conversation_id, internal_id))
+        conn.commit(); conn.close()
+    external_id = f"cw:{payload.get('id')}"
+    if not claim_message(external_id):
+        return
+    media: list[tuple[bytes, str, str]] = []
+    for attachment in payload.get("attachments") or []:
+        try:
+            item = await download_chatwoot_attachment(attachment)
+        except Exception:
+            logger.exception("Official inbox attachment download failed conversation=%s", conversation_id)
+            item = None
+        if item:
+            media.append(item)
+            try:
+                remember_media(jid, external_id, item)
+            except Exception:
+                logger.exception("Failed to persist media history for jid=%s", jid)
+    if not content and media:
+        content = "[mídia recebida]"
+    if not content:
+        return
+    if sdr.is_owner(jid):
+        command = content.strip().lower()
+        if command in {sdr.OWNER_TEST_START, sdr.OWNER_TEST_STOP}:
+            await cloud_owner_test(jid, source_id, conversation_id, command)
+            return
+        if not sdr.owner_test_run(jid):
+            return
+    # Chatwoot already stored the raw text; the agent and the brain only ever see the mark.
+    content, _secret = sdr.redact_credentials(content)
+    prospeccao.replied(jid)
+    logger.info("Official inbox message conversation=%s media=%d", conversation_id, len(media))
+    queue_hermes_turn(jid, content, media or None, source_id, conversation_id, external_id, None)
+
+
 @app.post("/chatwoot/webhook")
 async def chatwoot_webhook(request: Request) -> dict[str, bool]:
     if BRIDGE_WEBHOOK_TOKEN and request.headers.get("authorization") != f"Bearer {BRIDGE_WEBHOOK_TOKEN}":
         return {"received": False}
     payload = await request.json()
+    if cloud.is_inbox_event(payload):
+        # Official number: Chatwoot talks to Meta; the bridge only runs the agent and the bookkeeping.
+        await cloud_inbox_event(payload)
+        return {"received": True}
     if payload.get("event") != "message_created" or payload.get("message_type") not in {"outgoing", 1, "1"}:
         return {"received": True}
     attributes = payload.get("content_attributes") or {}
