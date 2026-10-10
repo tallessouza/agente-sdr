@@ -157,11 +157,22 @@ TEST_PHRASES = [
 ]
 
 
+# The question alone, for "Oi, {{1}}! {{2}}? Tenho uma dúvida." ({{2}} without the question mark).
+TEST_QUESTIONS = [
+    "Consigo falar com alguém por aqui", "Vocês atendem por aqui", "Vocês estão atendendo pelo WhatsApp",
+    "Tem alguém disponível por aqui", "Alguém consegue me atender por aqui", "Consigo tirar uma dúvida por aqui",
+    "Vocês respondem pelo WhatsApp", "Posso falar com alguém por aqui", "Vocês estão atendendo hoje",
+    "Consigo falar com o atendimento por aqui",
+]
+
+
 def test_fields(saudacao_min: str, rng: Any = None) -> dict[str, str]:
-    """Values the template variables can take: greeting alone, test phrase alone, or both."""
+    """Values the template variables can take: greeting, test phrase, question, or greeting + phrase."""
     import random
-    phrase = (rng or random).choice(TEST_PHRASES)
-    return {"saudacao_min": saudacao_min, "frase_teste": phrase, "abertura_teste": f"{saudacao_min}! {phrase}"}
+    rng = rng or random
+    phrase = rng.choice(TEST_PHRASES)
+    return {"saudacao_min": saudacao_min, "frase_teste": phrase, "abertura_teste": f"{saudacao_min}! {phrase}",
+            "pergunta_teste": rng.choice(TEST_QUESTIONS)}
 
 
 def approved_templates() -> list[dict[str, Any]]:

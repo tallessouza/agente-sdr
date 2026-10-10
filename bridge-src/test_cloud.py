@@ -204,17 +204,48 @@ class CloudTests(unittest.TestCase):
             {"name": "abordagem_b02", "status": "PENDING", "category": "UTILITY", "language": "pt_BR", "components": [body("Oi, como vai? {{1}}. Valeu!")]},
             {"name": "hello_world", "status": "APPROVED", "category": "UTILITY", "language": "en_US", "components": [body("Hello World")]},
         ]
-        pool = th.build_pool(templates)
-        self.assertEqual({(t["name"], t["category"], tuple(t["params"])) for t in pool},
-                         {("abordagem_a01", "UTILITY", ("abertura_teste",)), ("abordagem_b01", "MARKETING", ("frase_teste",))})
-        with patch.object(th, "USED_FILE", Path(self.tmp.name) / "used.json"):
-            batch = th.new_variants(templates, 30, random.Random(3))
-        texts = [t["components"][0]["text"] for t in batch]
+        with patch.object(th, "META_FILE", Path(self.tmp.name) / "meta.json"):
+            meta = th.load_meta()
+            pool = th.build_pool(templates, meta)
+            self.assertEqual({(t["name"], t["category"], tuple(t["params"])) for t in pool},
+                             {("abordagem_a01", "UTILITY", ("abertura_teste",)), ("abordagem_b01", "MARKETING", ("frase_teste",))})
+            batch = th.new_variants(templates, meta, 30, random.Random(3))
+        texts = [b["template"]["components"][0]["text"] for b in batch]
         self.assertEqual(len(batch), 30)
         self.assertEqual(len(set(texts)), 30)
         self.assertFalse({"Olá, {{1}}. Obrigado pela atenção!", "Oi, tudo bem? {{1}}. Fico no aguardo."} & set(texts))
-        self.assertFalse({"abordagem_a01", "abordagem_b01", "abordagem_b02"} & {t["name"] for t in batch})
+        self.assertFalse({"abordagem_a01", "abordagem_b01", "abordagem_b02"} & {b["template"]["name"] for b in batch})
         self.assertTrue(all(not t.startswith("{{") and not t.endswith("}}") for t in texts))
+        for b in batch:  # the example has one value per variable, as Meta requires
+            self.assertEqual(len(b["template"]["components"][0]["example"]["body_text"][0]), len(b["info"]["params"]))
+
+    def test_bait_waits_for_utility_then_is_edited_and_scored(self):
+        import template_health as th
+        with patch.object(th, "META_FILE", Path(self.tmp.name) / "meta.json"):
+            meta = th.load_meta()
+            meta["templates"]["isca_001"] = {"scheme": "isca", "params": ["saudacao_min"], "alvo": "Oi, {{1}}! Consigo falar com alguém agora? Tenho uma dúvida.", "estado": "isca"}
+            approved = [{"id": "77", "name": "isca_001", "status": "APPROVED", "category": "UTILITY", "language": "pt_BR",
+                         "components": [{"type": "BODY", "text": "Oi, {{1}}! Sua solicitação foi registrada."}]}]
+            th.learn(approved, meta)
+            self.assertEqual(meta["placar"], {})  # a bait approved as utility is not scored yet
+            self.assertEqual(th.build_pool(approved, meta), [])  # and never sent with the bait text
+            with patch.object(th, "graph", new=AsyncMock(return_value={"success": True})) as graph:
+                edited = asyncio.run(th.edit_baits(approved, meta))
+            self.assertEqual(edited, ["isca_001"])
+            self.assertEqual(graph.await_args.args[:2], ("POST", "77"))
+            self.assertEqual(graph.await_args.args[2]["components"][0]["text"], "Oi, {{1}}! Consigo falar com alguém agora? Tenho uma dúvida.")
+            after = [{**approved[0], "components": [{"type": "BODY", "text": "Oi, {{1}}! Consigo falar com alguém agora? Tenho uma dúvida."}]}]
+            th.learn(after, meta)
+            self.assertEqual(meta["placar"]["isca"]["utility"], 1)
+            self.assertEqual([t["name"] for t in th.build_pool(after, meta)], ["isca_001"])
+
+    def test_scheme_weights_follow_utility_success(self):
+        import template_health as th
+        meta = {"placar": {"vencedor": {"utility": 8, "marketing": 2}, "frase_var": {"utility": 0, "marketing": 10}}, "templates": {}, "usados": []}
+        weights = dict(zip(th.SCHEMES, th.scheme_weights(meta)))
+        self.assertGreater(weights["vencedor"], weights["isca"])
+        self.assertGreater(weights["isca"], weights["frase_var"])
+        self.assertGreater(weights["frase_var"], 0)
 
     def test_queue_pauses_itself_when_no_template_is_allowed(self):
         prospeccao.enqueue([{"telefone_e164": "+5548999990000", "nome": "Clínica X"}])
