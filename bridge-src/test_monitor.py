@@ -63,8 +63,10 @@ class MonitorTests(unittest.TestCase):
         repeated = [msg(1, "nós", "Oi, boa noite! Vocês atendem por aqui? Queria tirar uma dúvida.", True),
                     msg(2, "eles", "Oi"), msg(3, "nós", "Oi, boa noite! Vocês atendem por aqui? Queria tirar uma dúvida.", True)]
         self.assertEqual([f[0] for f in monitor.patrol_findings(repeated)], ["mensagem repetida"])
-        burst = [msg(i, "nós", f"mensagem {i}", True) for i in range(1, 7)]
+        burst = [msg(i, "nós", f"mensagem {i}", True, ts=i * 200) for i in range(1, 7)]  # 6 turns, 200 s apart
         self.assertIn("muitas mensagens seguidas sem resposta", [f[0] for f in monitor.patrol_findings(burst)])
+        parts = [msg(i, "nós", f"parte {i}", True, ts=i * 5) for i in range(1, 7)]  # one reply in 6 short parts
+        self.assertEqual(monitor.patrol_findings(parts), [])
         optout = [msg(1, "nós", "teste", True), msg(2, "eles", "Não tenho interesse, obrigado"), msg(3, "nós", "Entendo! Mas posso te mostrar em 20 minutos?", True)]
         self.assertIn("resposta depois de pedido para parar", [f[0] for f in monitor.patrol_findings(optout)])
         error = [msg(1, "nós", "HTTP 429: rate limit exceeded", True)]
@@ -75,6 +77,16 @@ class MonitorTests(unittest.TestCase):
         human = [msg(1, "nós", "Oi, boa noite! Vocês atendem por aqui?", True), msg(2, "eles", "Boa noite, pois não?"),
                  msg(3, "nós", "Sou o agente do Talles, foi um teste.", True)]
         self.assertEqual(monitor.patrol_findings(human), [])
+
+    def test_colleague_message_in_parts_is_not_robot_chatter(self):
+        # Conversation 81 on 10/10: test, two welcome copies, one colleague message in three parts, then silence.
+        conv81 = [msg(1, "nós", "Oi, boa noite! Alguém pode me ajudar por aqui?", True, ts=0),
+                  msg(2, "eles", "Olá seja bem vindo a nossa clínica", ts=6), msg(3, "eles", "Olá seja bem vindo a nossa clínica", ts=14),
+                  msg(4, "nós", "Oi! Sou o agente do Talles.", True, ts=50), msg(5, "nós", "O atendente que o Talles instala...", True, ts=56),
+                  msg(6, "nós", "Sabrina, se quiser ver em 20 minutos...", True, ts=60)]
+        self.assertEqual(monitor.patrol_findings(conv81, robot=True), [])
+        talking_on = conv81 + [msg(7, "eles", "Como posso ajudar?", ts=300), msg(8, "nós", "Posso te mostrar...", True, ts=320)]
+        self.assertEqual([f[0] for f in monitor.patrol_findings(talking_on, robot=True)], ["seguiu conversando com robô"])
 
     def test_each_alert_acts_once(self):
         messages = [msg(1, "nós", "Oi, boa noite! Vocês atendem por aqui? Queria tirar uma dúvida.", True),

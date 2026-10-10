@@ -28,7 +28,7 @@ CHATWOOT_ACCOUNT_ID = os.getenv("CHATWOOT_ACCOUNT_ID", "")
 CHATWOOT_APP_TOKEN = os.getenv("CHATWOOT_APP_TOKEN", "")
 MONITOR_SECONDS = int(os.getenv("MONITOR_SECONDS", "300"))
 MONITOR_WINDOW = int(os.getenv("MONITOR_WINDOW_SECONDS", str(3 * 3600)))
-BURST_LIMIT = int(os.getenv("MONITOR_BURST_LIMIT", "5"))
+BURST_LIMIT = int(os.getenv("MONITOR_BURST_LIMIT", "4"))
 LABEL = os.getenv("MONITOR_LABEL", "monitor-alerta")
 
 
@@ -102,6 +102,28 @@ def recent_alerts(limit: int = 50) -> list[dict[str, Any]]:
         return [dict(r) for r in c.execute("SELECT * FROM monitor_alertas ORDER BY criado DESC LIMIT ?", (limit,))]
 
 
+TURN_GAP = int(os.getenv("MONITOR_TURN_GAP_SECONDS", "90"))
+BURST_WINDOW = int(os.getenv("MONITOR_BURST_WINDOW_SECONDS", "1800"))
+
+
+def agent_turns(messages: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    """Agent messages grouped into turns: one reply split in short parts (seconds apart) is one turn."""
+    turns: list[list[dict[str, Any]]] = []
+    last = None
+    for m in messages:
+        if m.get("message_type") == 0:
+            last = None
+            continue
+        if not (m.get("message_type") == 1 and (m.get("content_attributes") or {}).get("bridge_agent")):
+            continue
+        if last is not None and m["created_at"] - last["created_at"] <= TURN_GAP:
+            turns[-1].append(m)
+        else:
+            turns.append([m])
+        last = m
+    return turns
+
+
 def patrol_findings(messages: list[dict[str, Any]], robot: bool = False) -> list[tuple[str, str, str]]:
     """(rule, detail, message id) for one conversation; messages oldest first, public only."""
     findings: list[tuple[str, str, str]] = []
@@ -112,15 +134,17 @@ def patrol_findings(messages: list[dict[str, Any]], robot: bool = False) -> list
         if len(key) > 20 and key in seen:
             findings.append(("mensagem repetida", m.get("content", "")[:200], str(m["id"])))
         seen.setdefault(key, m)
-    burst = 0
-    for m in messages:
-        if m.get("message_type") == 0:
-            burst = 0
-            continue
-        if m.get("message_type") == 1 and (m.get("content_attributes") or {}).get("bridge_agent"):
-            burst += 1
-            if burst == BURST_LIMIT:
-                findings.append(("muitas mensagens seguidas sem resposta", f"{burst} mensagens do agente sem o lead responder", str(m["id"])))
+    # Turns without a reply from the lead in between, inside a short window: the agent talking to itself.
+    run: list[list[dict[str, Any]]] = []
+    previous_end = None
+    for turn in agent_turns(messages):
+        lead_between = previous_end is not None and any(
+            m.get("message_type") == 0 and previous_end["created_at"] < m["created_at"] < turn[0]["created_at"] for m in messages)
+        run = [turn] if lead_between or not run else run + [turn]
+        previous_end = turn[-1]
+        recent = [t for t in run if turn[-1]["created_at"] - t[0]["created_at"] <= BURST_WINDOW]
+        if len(recent) == BURST_LIMIT:
+            findings.append(("muitas mensagens seguidas sem resposta", f"{len(recent)} turnos do agente em até {BURST_WINDOW // 60} min sem o lead responder", str(turn[-1]["id"])))
     opted_out_at = None
     for m in messages:
         if m.get("message_type") == 0 and any(re.search(p, fold(m.get("content"))) for p in OPT_OUT):
@@ -133,9 +157,9 @@ def patrol_findings(messages: list[dict[str, Any]], robot: bool = False) -> list
             for reason in error_violations([m.get("content", "")]):
                 findings.append(("texto interno vazou", reason, str(m["id"])))
     if robot:
-        agent_after = [m for m in ours if (m.get("content_attributes") or {}).get("bridge_agent")]
-        if len(agent_after) > 3:  # test + colleague message, then silence
-            findings.append(("seguiu conversando com robô", f"{len(agent_after)} mensagens nossas numa conversa com robô", str(agent_after[-1]["id"])))
+        turns = agent_turns(messages)
+        if len(turns) > 2:  # the test and one colleague message (in short parts), then silence
+            findings.append(("seguiu conversando com robô", f"{len(turns)} turnos nossos numa conversa com robô", str(turns[-1][-1]["id"])))
     return findings
 
 
