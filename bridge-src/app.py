@@ -11,6 +11,7 @@ import time
 import uuid
 import cloud
 import handover
+import monitor
 import prospeccao
 import template_health
 import random
@@ -99,6 +100,8 @@ async def start_background_workers() -> None:
     _prospect_task = asyncio.create_task(prospect_worker(), name="prospeccao")
     if template_health.TOKEN and template_health.WABA:
         asyncio.create_task(template_health_worker(), name="template-health")
+    if cloud.enabled():
+        asyncio.create_task(monitor_worker(), name="monitor")
 
 
 @app.on_event("shutdown")
@@ -1039,6 +1042,15 @@ async def deliver_agent_reply(jid: str, source_id: str, conversation_id: int, re
             await sdr.private_note(conversation_id, "🛑 Resposta do agente bloqueada pelo guardrail (termos: " + ", ".join(leaks) + "):\n\n" + reply_text)
         except Exception:
             logger.exception("Failed to store blocked reply for conversation=%s", conversation_id)
+    held = monitor.pre_send(parts, sdr.lead_state(conversation_id).get("oferta"), sdr.FALLBACK_REPLY) if parts else []
+    if held:
+        # Better silent than wrong: nothing goes out, the conversation pauses and Talles gets the draft.
+        draft_text = "\n\n".join(parts)
+        await monitor.alert(conversation_id, "resposta segurada antes do envio: " + "; ".join(held), "Rascunho do agente:\n" + draft_text,
+                            f"{conversation_id}:pre:{hashlib.sha1(draft_text.encode()).hexdigest()[:12]}",
+                            handover.pause, sdr.private_note, sdr.add_label)
+        sdr.record_correction(conversation_id, draft, [], "segurada pelo monitor")
+        return True
     # Deterministic style rule from the owner: no dashes or colons chaining sentences.
     parts = [sdr.plain_style(part) for part in parts]
     sent: list[str] = []
@@ -1477,6 +1489,33 @@ async def prospect_cloud(number: str, data: dict[str, Any], now: float) -> str:
 def datetime_local(ts: float):
     from datetime import datetime
     return datetime.fromtimestamp(ts, sdr.BUSINESS_TZ)
+
+
+def monitored_conversations(now: float | None = None) -> list[tuple[int, bool]]:
+    """Official-number conversations with activity inside the monitor window, and whether a robot answers."""
+    since = (time.time() if now is None else now) - monitor.MONITOR_WINDOW
+    conn = db(); rows = conn.execute("SELECT conversation_id FROM contacts WHERE jid LIKE '%@cloud'").fetchall(); conn.close()
+    out = []
+    for (conversation,) in rows:
+        lead, agent = sdr.activity(int(conversation))
+        if max(lead or 0, agent or 0) < since:
+            continue
+        with sdr.connect() as c:
+            robot = bool(c.execute("SELECT 1 FROM sdr_records WHERE conversation=? AND field IN ('atende_com_ia','resposta_automatica') AND value='sim'",
+                                   (int(conversation),)).fetchone())
+        out.append((int(conversation), robot))
+    return out
+
+
+async def monitor_worker() -> None:
+    while True:
+        try:
+            await monitor.patrol(monitored_conversations(), handover.pause, sdr.private_note, sdr.add_label)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("monitor iteration failed")
+        await asyncio.sleep(monitor.MONITOR_SECONDS)
 
 
 async def template_health_worker() -> None:

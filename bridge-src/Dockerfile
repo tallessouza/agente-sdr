@@ -5,7 +5,7 @@ RUN apt-get update \
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app.py handover.py sdr.py prospeccao.py cloud.py template_health.py .
+COPY app.py handover.py sdr.py prospeccao.py cloud.py template_health.py monitor.py .
 COPY validate_fixtures.py simulate_fixtures.py ./
 COPY fixtures ./fixtures
 EXPOSE 8080
