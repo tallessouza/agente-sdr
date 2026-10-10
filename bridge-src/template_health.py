@@ -33,8 +33,8 @@ HEALTH_SECONDS = int(os.getenv("TEMPLATE_HEALTH_SECONDS", "900"))
 UTILITY_TARGET = int(os.getenv("TEMPLATE_UTILITY_TARGET", "20"))
 BATCH = int(os.getenv("TEMPLATE_BATCH", "30"))
 MARKETING_MAX_SHARE = float(os.getenv("MARKETING_MAX_SHARE", "0.2"))
-# Share of the approved stock allowed to stay as marketing; 0 = every marketing template is deleted.
-MARKETING_KEEP_SHARE = float(os.getenv("MARKETING_KEEP_SHARE", "0"))
+# Share of the approved stock kept as marketing, chosen by health (0 = every marketing template is deleted).
+MARKETING_KEEP_SHARE = float(os.getenv("MARKETING_KEEP_SHARE", "0.2"))
 
 # Templates created before the generator: what fills their variables comes from the name.
 LEGACY_PARAMS = [("abordagem_a", ["abertura_teste"]), ("abordagem_b", ["frase_teste"]), ("teste_atendimento_", ["saudacao_min"])]
@@ -156,7 +156,7 @@ async def graph(method: str, path: str, body: dict[str, Any] | None = None) -> d
 
 
 async def list_templates() -> list[dict[str, Any]]:
-    data = await graph("GET", f"{WABA}/message_templates?fields=id,name,status,category,language,components&limit=500")
+    data = await graph("GET", f"{WABA}/message_templates?fields=id,name,status,category,language,components,quality_score&limit=500")
     return data.get("data") or []
 
 
@@ -182,6 +182,14 @@ def usable(t: dict[str, Any], meta: dict[str, Any]) -> bool:
     return not (info and info.get("estado") == "isca")
 
 
+HEALTH_RANK = {"GREEN": 0, "UNKNOWN": 1, "": 1, "YELLOW": 2, "RED": 3}
+
+
+def health(t: dict[str, Any]) -> str:
+    """Meta's quality score of the template (GREEN, YELLOW, RED or UNKNOWN while it has little traffic)."""
+    return str(((t.get("quality_score") or {}).get("score")) or "UNKNOWN").upper()
+
+
 def build_pool(templates: list[dict[str, Any]], meta: dict[str, Any]) -> list[dict[str, Any]]:
     pool = []
     for t in templates:
@@ -189,7 +197,10 @@ def build_pool(templates: list[dict[str, Any]], meta: dict[str, Any]) -> list[di
         text = body_of(t)
         if params is None or t.get("status") != "APPROVED" or t.get("category") not in {"UTILITY", "MARKETING"} or not text or not usable(t, meta):
             continue
-        pool.append({"name": t["name"], "language": t.get("language", "pt_BR"), "category": t["category"], "text": text, "params": params})
+        if health(t) == "RED":
+            continue  # recipients are blocking or reporting it: never sent again
+        pool.append({"name": t["name"], "language": t.get("language", "pt_BR"), "category": t["category"], "text": text,
+                     "params": params, "saude": health(t)})
     return pool
 
 
@@ -224,9 +235,12 @@ async def trim_marketing(templates: list[dict[str, Any]], meta: dict[str, Any]) 
     marketing = [t for t in templates if t.get("status") in {"APPROVED", "PENDING"} and t.get("category") == "MARKETING"
                  and params_for(t.get("name", ""), meta) is not None]
     allowed = int(utility * MARKETING_KEEP_SHARE / (1 - MARKETING_KEEP_SHARE)) if MARKETING_KEEP_SHARE < 1 else len(marketing)
-    marketing.sort(key=lambda t: (t.get("status") == "APPROVED", int(t.get("id") or 0)), reverse=True)
+    # Healthiest approved first; pending (no health yet) and RED ones are always among the deleted.
+    keepable = sorted([t for t in marketing if t.get("status") == "APPROVED" and health(t) != "RED"],
+                      key=lambda t: (HEALTH_RANK.get(health(t), 1), -int(t.get("id") or 0)))
+    keep = {t["name"] for t in keepable[:allowed]}
     deleted = []
-    for t in marketing[allowed:]:
+    for t in [t for t in marketing if t["name"] not in keep]:
         info = meta["templates"].get(t["name"])
         if info and not info.get("contado"):  # a pending one Meta already labeled marketing still counts for the scheme
             info["contado"] = "marketing"
@@ -319,13 +333,14 @@ async def check_once(sync_chatwoot: Any = None) -> dict[str, Any]:
 
 
 def choose_category(pool: list[dict[str, Any]], utility_sent: int, marketing_sent: int) -> str | None:
-    """UTILITY whenever there is one; MARKETING only while it stays within the share; else None (pause)."""
-    if any(t.get("category") == "UTILITY" for t in pool):
-        return "UTILITY"
+    """No UTILITY in the pool: no send at all (None pauses the queue). With UTILITY, the day's sends follow
+    80/20: a MARKETING one goes out whenever it keeps marketing within MARKETING_MAX_SHARE (every 5th send)."""
+    if not any(t.get("category") == "UTILITY" for t in pool):
+        return None
     total = utility_sent + marketing_sent + 1
     if any(t.get("category") == "MARKETING" for t in pool) and (marketing_sent + 1) / total <= MARKETING_MAX_SHARE:
         return "MARKETING"
-    return None
+    return "UTILITY"
 
 
 if __name__ == "__main__":  # manual run: python template_health.py

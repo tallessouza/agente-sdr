@@ -188,11 +188,35 @@ class CloudTests(unittest.TestCase):
     def test_category_rule_keeps_marketing_at_most_twenty_percent(self):
         import template_health as th
         util = [{"category": "UTILITY"}]; mkt = [{"category": "MARKETING"}]
-        self.assertEqual(th.choose_category(util + mkt, 0, 0), "UTILITY")
-        self.assertIsNone(th.choose_category(mkt, 0, 0))            # 1 of 1 would be 100% marketing
-        self.assertEqual(th.choose_category(mkt, 4, 0), "MARKETING")  # 1 of 5 = 20%
-        self.assertIsNone(th.choose_category(mkt, 4, 1))            # 2 of 6 > 20%
+        self.assertEqual(th.choose_category(util + mkt, 0, 0), "UTILITY")    # 1 of 1 would be 100% marketing
+        self.assertEqual(th.choose_category(util + mkt, 4, 0), "MARKETING")  # 1 of 5 = 20%
+        self.assertEqual(th.choose_category(util + mkt, 4, 1), "UTILITY")    # 2 of 6 > 20%
+        self.assertEqual(th.choose_category(util, 4, 0), "UTILITY")          # no marketing in stock
+        self.assertIsNone(th.choose_category(mkt, 0, 0))                     # no utility: no send at all
+        self.assertIsNone(th.choose_category(mkt, 40, 0))
         self.assertIsNone(th.choose_category([], 10, 0))
+        sends = {"UTILITY": 0, "MARKETING": 0}
+        for _ in range(100):
+            sends[th.choose_category(util + mkt, sends["UTILITY"], sends["MARKETING"])] += 1
+        self.assertEqual(sends, {"UTILITY": 80, "MARKETING": 20})
+
+    def test_marketing_kept_by_health_within_twenty_percent(self):
+        import template_health as th
+        body = [{"type": "BODY", "text": "Oi, {{1}}! Tem alguém por aí? Tenho uma dúvida."}]
+        mk = lambda i, status, cat, score=None: {"id": str(i), "name": f"vencedor_{i:03d}", "status": status, "category": cat,
+                                                 "language": "pt_BR", "components": body, **({"quality_score": {"score": score}} if score else {})}
+        templates = [mk(i, "APPROVED", "UTILITY", "GREEN") for i in range(1, 9)] + [
+            mk(20, "APPROVED", "MARKETING", "RED"), mk(21, "APPROVED", "MARKETING", "YELLOW"), mk(22, "APPROVED", "MARKETING", "GREEN"),
+            mk(23, "APPROVED", "MARKETING"), mk(24, "PENDING", "MARKETING"), mk(25, "APPROVED", "UTILITY", "RED")]
+        with patch.object(th, "META_FILE", Path(self.tmp.name) / "meta.json"):
+            meta = th.load_meta()
+            for t in templates:
+                meta["templates"][t["name"]] = {"scheme": "vencedor", "params": ["saudacao_min"], "estado": "pronto"}
+            self.assertNotIn("vencedor_025", {t["name"] for t in th.build_pool(templates, meta)})  # RED utility leaves the draw
+            with patch.object(th, "graph", new=AsyncMock(return_value={"success": True})):
+                deleted = asyncio.run(th.trim_marketing(templates, meta))
+        # 8 utility allow 2 marketing: GREEN and UNKNOWN stay; RED, YELLOW and the pending one go.
+        self.assertEqual(sorted(deleted), ["vencedor_020", "vencedor_021", "vencedor_024"])
 
     def test_health_builds_the_pool_and_submits_only_unseen_variants(self):
         import random
