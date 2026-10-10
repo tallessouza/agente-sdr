@@ -27,6 +27,15 @@ async def persona_reply(transcript):
 async def main():
     conv = 990500 + int(time.time()) % 1000
     session = f"test:sim:{int(time.time())}"
+    if os.environ.get("SIM_PROSPECT"):
+        # Prospecção: a business we tested answers. SIM_PROSPECT = {"negocio": {...}, "minutos": N}
+        import prospeccao
+        p = json.loads(os.environ["SIM_PROSPECT"])
+        now = time.time()
+        prospeccao.enqueue([{"numero": "5548999999999", **p.get("negocio", {})}])
+        prospeccao.update("5548999999999", status="enviado", jid="sim", conversation=conv, texto="Boa noite! Vocês estão atendendo pelo WhatsApp? Queria tirar uma dúvida.",
+                          enviado_em=now - 60 * float(p.get("minutos", 5)))
+        prospeccao.replied("sim", now)
     sdr.remember_lead(conv, "sim", FIRST)
     if os.path.exists("/tmp/ficha.json"):
         sdr.set_profile(conv, json.load(open("/tmp/ficha.json", encoding="utf-8")))
