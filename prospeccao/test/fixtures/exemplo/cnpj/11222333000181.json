@@ -1,0 +1,24 @@
+{
+ "cnpj": "11222333000181",
+ "razao_social": "SORRISO PLENO ODONTOLOGIA LTDA",
+ "nome_fantasia": "",
+ "porte": "DEMAIS",
+ "data_inicio_atividade": "2015-03-10",
+ "capital_social": 150000,
+ "descricao_situacao_cadastral": "ATIVA",
+ "municipio": "SAO JOSE",
+ "uf": "SC",
+ "cnae_fiscal_descricao": "Atividade odontológica",
+ "natureza_juridica": "Sociedade Empresária Limitada",
+ "identificador_matriz_filial": 1,
+ "qsa": [
+  {
+   "nome_socio": "MARINA DUARTE SILVA",
+   "qualificacao_socio": "Sócio-Administrador"
+  },
+  {
+   "nome_socio": "RICARDO DUARTE",
+   "qualificacao_socio": "Sócio"
+  }
+ ]
+}

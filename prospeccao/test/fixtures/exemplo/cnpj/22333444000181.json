@@ -1,0 +1,20 @@
+{
+ "cnpj": "22333444000181",
+ "razao_social": "ODONTO VIDA LTDA",
+ "nome_fantasia": "",
+ "porte": "MICRO EMPRESA",
+ "data_inicio_atividade": "2015-03-10",
+ "capital_social": 20000,
+ "descricao_situacao_cadastral": "BAIXADA",
+ "municipio": "SAO JOSE",
+ "uf": "SC",
+ "cnae_fiscal_descricao": "Atividade odontológica",
+ "natureza_juridica": "Sociedade Empresária Limitada",
+ "identificador_matriz_filial": 1,
+ "qsa": [
+  {
+   "nome_socio": "FERNANDO VIDAL",
+   "qualificacao_socio": "Sócio-Administrador"
+  }
+ ]
+}

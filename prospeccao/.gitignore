@@ -1,0 +1,5 @@
+# Só o campanha.json (e a revisão manual do decisor) é versionado; o resto da pasta da campanha é saída dos comandos.
+campanhas/*/*
+!campanhas/*/campanha.json
+!campanhas/*/ajustes-decisor.json
+*.tmp

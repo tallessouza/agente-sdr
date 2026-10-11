@@ -1,0 +1,10 @@
+{
+  "slug": "exemplo",
+  "descricao": "Campanha pequena de exemplo: 2 cidades x 2 nichos x 5 por busca (20 lugares no máximo). Roda de ponta a ponta com as fixtures de test/fixtures/exemplo.",
+  "cidades": [{ "nome": "São José", "uf": "SC" }, { "nome": "Palhoça", "uf": "SC" }],
+  "nichos": ["clínica odontológica", "imobiliária"],
+  "por_busca": 5,
+  "teto_usd": { "coleta": 0.15, "instagram_raso": 0.05, "instagram_fundo": 0.1 },
+  "prioridade": { "cidades_primeiro": ["São José"], "ordem": "avaliacoes_desc" },
+  "camadas": { "site": true, "instagram_raso": true, "instagram_fundo": "top:10", "decisor": "top:10" }
+}

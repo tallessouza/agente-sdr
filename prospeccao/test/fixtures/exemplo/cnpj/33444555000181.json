@@ -1,0 +1,20 @@
+{
+ "cnpj": "33444555000181",
+ "razao_social": "HORIZONTE NEGOCIOS IMOBILIARIOS LTDA",
+ "nome_fantasia": "",
+ "porte": "MICRO EMPRESA",
+ "data_inicio_atividade": "2015-03-10",
+ "capital_social": 50000,
+ "descricao_situacao_cadastral": "ATIVA",
+ "municipio": "SAO JOSE",
+ "uf": "SC",
+ "cnae_fiscal_descricao": "Corretagem na compra e venda e avaliação de imóveis",
+ "natureza_juridica": "Sociedade Empresária Limitada",
+ "identificador_matriz_filial": 1,
+ "qsa": [
+  {
+   "nome_socio": "CARLOS HORIZONTE ALVES",
+   "qualificacao_socio": "Sócio-Administrador"
+  }
+ ]
+}

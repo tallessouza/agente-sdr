@@ -1,0 +1,20 @@
+{
+ "cnpj": "44555666000181",
+ "razao_social": "ENSEADA IMOVEIS LTDA",
+ "nome_fantasia": "",
+ "porte": "MICRO EMPRESA",
+ "data_inicio_atividade": "2015-03-10",
+ "capital_social": 10000,
+ "descricao_situacao_cadastral": "ATIVA",
+ "municipio": "PALHOCA",
+ "uf": "SC",
+ "cnae_fiscal_descricao": "Corretagem no aluguel de imóveis",
+ "natureza_juridica": "Sociedade Empresária Limitada",
+ "identificador_matriz_filial": 1,
+ "qsa": [
+  {
+   "nome_socio": "JOAO PEDRO MACHADO",
+   "qualificacao_socio": "Sócio-Administrador"
+  }
+ ]
+}

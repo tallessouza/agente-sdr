@@ -1,0 +1,702 @@
+[
+ {
+  "categoryName": "Clínica odontológica",
+  "categories": [
+   "Clínica odontológica"
+  ],
+  "city": "São José",
+  "totalScore": 4.9,
+  "reviewsCount": 320,
+  "permanentlyClosed": false,
+  "temporarilyClosed": false,
+  "address": "Rua Fictícia, 1 - Kobrasol, São José - SC, 88000-000, Brasil",
+  "neighborhood": "Kobrasol",
+  "url": "https://maps.google.com/?cid=pSJ01",
+  "openingHours": [
+   {
+    "day": "segunda-feira",
+    "hours": "08:00 to 19:00"
+   },
+   {
+    "day": "terça-feira",
+    "hours": "08:00 to 19:00"
+   },
+   {
+    "day": "quarta-feira",
+    "hours": "08:00 to 19:00"
+   },
+   {
+    "day": "quinta-feira",
+    "hours": "08:00 to 19:00"
+   },
+   {
+    "day": "sexta-feira",
+    "hours": "08:00 to 19:00"
+   },
+   {
+    "day": "sábado",
+    "hours": "08:00 to 12:00"
+   },
+   {
+    "day": "domingo",
+    "hours": "Fechado"
+   }
+  ],
+  "_cidade": "São José",
+  "searchString": "clínica odontológica",
+  "n": 1,
+  "placeId": "pSJ01",
+  "title": "Clínica Sorriso Pleno",
+  "cat": "Clínica odontológica",
+  "phone": "(48) 99999-0001",
+  "website": "https://sorrisopleno.com.br/",
+  "bairro": "Kobrasol"
+ },
+ {
+  "categoryName": "Dentista",
+  "categories": [
+   "Dentista"
+  ],
+  "city": "São José",
+  "totalScore": 4.6,
+  "reviewsCount": 80,
+  "permanentlyClosed": false,
+  "temporarilyClosed": false,
+  "address": "Rua Fictícia, 2 - Campinas, São José - SC, 88000-000, Brasil",
+  "neighborhood": "Campinas",
+  "url": "https://maps.google.com/?cid=pSJ02",
+  "openingHours": [
+   {
+    "day": "segunda-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "terça-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quarta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quinta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sexta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sábado",
+    "hours": "Fechado"
+   },
+   {
+    "day": "domingo",
+    "hours": "Fechado"
+   }
+  ],
+  "_cidade": "São José",
+  "searchString": "clínica odontológica",
+  "n": 2,
+  "placeId": "pSJ02",
+  "title": "Odonto Vida São José",
+  "cat": "Dentista",
+  "phone": "(48) 99999-0002",
+  "website": "https://odontovida.com.br/",
+  "bairro": "Campinas"
+ },
+ {
+  "categoryName": "Dentista",
+  "categories": [
+   "Dentista"
+  ],
+  "city": "São José",
+  "totalScore": 4.5,
+  "reviewsCount": 10,
+  "permanentlyClosed": false,
+  "temporarilyClosed": false,
+  "address": "Rua Fictícia, 3 - Centro, São José - SC, 88000-000, Brasil",
+  "neighborhood": null,
+  "url": "https://maps.google.com/?cid=pSJ03",
+  "openingHours": [
+   {
+    "day": "segunda-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "terça-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quarta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quinta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sexta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sábado",
+    "hours": "Fechado"
+   },
+   {
+    "day": "domingo",
+    "hours": "Fechado"
+   }
+  ],
+  "_cidade": "São José",
+  "searchString": "clínica odontológica",
+  "n": 3,
+  "placeId": "pSJ03",
+  "title": "Dentista Dr. Paulo Mendes",
+  "cat": "Dentista",
+  "phone": "(48) 3333-0003",
+  "website": null
+ },
+ {
+  "categoryName": "Dentista",
+  "categories": [
+   "Dentista"
+  ],
+  "city": "São José",
+  "totalScore": 4.5,
+  "reviewsCount": 10,
+  "permanentlyClosed": true,
+  "temporarilyClosed": false,
+  "address": "Rua Fictícia, 4 - Centro, São José - SC, 88000-000, Brasil",
+  "neighborhood": null,
+  "url": "https://maps.google.com/?cid=pSJ04",
+  "openingHours": [
+   {
+    "day": "segunda-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "terça-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quarta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quinta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sexta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sábado",
+    "hours": "Fechado"
+   },
+   {
+    "day": "domingo",
+    "hours": "Fechado"
+   }
+  ],
+  "_cidade": "São José",
+  "searchString": "clínica odontológica",
+  "n": 4,
+  "placeId": "pSJ04",
+  "title": "Clínica Fechada",
+  "cat": "Dentista",
+  "phone": "(48) 99999-0004"
+ },
+ {
+  "categoryName": "Odontopediatra",
+  "categories": [
+   "Odontopediatra"
+  ],
+  "city": "São José",
+  "totalScore": 4.5,
+  "reviewsCount": 15,
+  "permanentlyClosed": false,
+  "temporarilyClosed": false,
+  "address": "Rua Fictícia, 5 - Centro, São José - SC, 88000-000, Brasil",
+  "neighborhood": null,
+  "url": "https://maps.google.com/?cid=pSJ05",
+  "openingHours": [
+   {
+    "day": "segunda-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "terça-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quarta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quinta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sexta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sábado",
+    "hours": "Fechado"
+   },
+   {
+    "day": "domingo",
+    "hours": "Fechado"
+   }
+  ],
+  "_cidade": "São José",
+  "searchString": "clínica odontológica",
+  "n": 5,
+  "placeId": "pSJ05",
+  "title": "Sorriso Kids",
+  "cat": "Odontopediatra",
+  "phone": "(48) 99999-0005",
+  "website": "https://www.instagram.com/sorrisokids/"
+ },
+ {
+  "categoryName": "Dentista",
+  "categories": [
+   "Dentista"
+  ],
+  "city": "São José",
+  "totalScore": 4.5,
+  "reviewsCount": 10,
+  "permanentlyClosed": false,
+  "temporarilyClosed": false,
+  "address": "Rua Fictícia, 6 - Centro, São José - SC, 88000-000, Brasil",
+  "neighborhood": null,
+  "url": "https://maps.google.com/?cid=pSJ06",
+  "openingHours": [
+   {
+    "day": "segunda-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "terça-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quarta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quinta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sexta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sábado",
+    "hours": "Fechado"
+   },
+   {
+    "day": "domingo",
+    "hours": "Fechado"
+   }
+  ],
+  "_cidade": "São José",
+  "searchString": "clínica odontológica",
+  "n": 6,
+  "placeId": "pSJ06",
+  "title": "Excedente do limite por busca",
+  "cat": "Dentista",
+  "phone": "(48) 99999-0006"
+ },
+ {
+  "categoryName": "Imobiliária",
+  "categories": [
+   "Imobiliária"
+  ],
+  "city": "São José",
+  "totalScore": 4.8,
+  "reviewsCount": 210,
+  "permanentlyClosed": false,
+  "temporarilyClosed": false,
+  "address": "Rua Fictícia, 7 - Barreiros, São José - SC, 88000-000, Brasil",
+  "neighborhood": "Barreiros",
+  "url": "https://maps.google.com/?cid=pSJ07",
+  "openingHours": [
+   {
+    "day": "segunda-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "terça-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quarta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quinta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sexta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sábado",
+    "hours": "Fechado"
+   },
+   {
+    "day": "domingo",
+    "hours": "Fechado"
+   }
+  ],
+  "_cidade": "São José",
+  "searchString": "imobiliária",
+  "n": 7,
+  "placeId": "pSJ07",
+  "title": "Imobiliária Horizonte",
+  "cat": "Imobiliária",
+  "phone": "(48) 99999-0007",
+  "website": "https://horizonteimoveis.com.br/",
+  "bairro": "Barreiros"
+ },
+ {
+  "categoryName": "Imobiliária",
+  "categories": [
+   "Imobiliária"
+  ],
+  "city": "São José",
+  "totalScore": 4.5,
+  "reviewsCount": 40,
+  "permanentlyClosed": false,
+  "temporarilyClosed": false,
+  "address": "Rua Fictícia, 8 - Centro, São José - SC, 88000-000, Brasil",
+  "neighborhood": null,
+  "url": "https://maps.google.com/?cid=pSJ08",
+  "openingHours": [
+   {
+    "day": "segunda-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "terça-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quarta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quinta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sexta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sábado",
+    "hours": "Fechado"
+   },
+   {
+    "day": "domingo",
+    "hours": "Fechado"
+   }
+  ],
+  "_cidade": "São José",
+  "searchString": "imobiliária",
+  "n": 8,
+  "placeId": "pSJ08",
+  "title": "Casa Nova Imóveis",
+  "cat": "Imobiliária",
+  "phone": "(48) 99999-0008",
+  "website": "https://wa.me/5548999990008"
+ },
+ {
+  "categoryName": "Imobiliária",
+  "categories": [
+   "Imobiliária"
+  ],
+  "city": "São José",
+  "totalScore": 4.5,
+  "reviewsCount": 10,
+  "permanentlyClosed": false,
+  "temporarilyClosed": false,
+  "address": "Rua Fictícia, 9 - Centro, São José - SC, 88000-000, Brasil",
+  "neighborhood": null,
+  "url": "https://maps.google.com/?cid=pSJ09",
+  "openingHours": [
+   {
+    "day": "segunda-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "terça-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quarta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quinta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sexta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sábado",
+    "hours": "Fechado"
+   },
+   {
+    "day": "domingo",
+    "hours": "Fechado"
+   }
+  ],
+  "_cidade": "São José",
+  "searchString": "imobiliária",
+  "n": 9,
+  "placeId": "pSJ09",
+  "title": "Imóveis Litoral (mesmo telefone)",
+  "cat": "Imobiliária",
+  "phone": "(48) 99999-0001"
+ },
+ {
+  "categoryName": "Imobiliária",
+  "categories": [
+   "Imobiliária"
+  ],
+  "city": "São José",
+  "totalScore": 4.5,
+  "reviewsCount": 10,
+  "permanentlyClosed": false,
+  "temporarilyClosed": false,
+  "address": "Rua Fictícia, 10 - Centro, São José - SC, 88000-000, Brasil",
+  "neighborhood": null,
+  "url": "https://maps.google.com/?cid=pSJ10",
+  "openingHours": [
+   {
+    "day": "segunda-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "terça-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quarta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quinta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sexta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sábado",
+    "hours": "Fechado"
+   },
+   {
+    "day": "domingo",
+    "hours": "Fechado"
+   }
+  ],
+  "_cidade": "São José",
+  "searchString": "imobiliária",
+  "n": 10,
+  "placeId": "pSJ10",
+  "title": "Imobiliária Ponte",
+  "cat": "Imobiliária",
+  "phone": "+1 555 0100"
+ },
+ {
+  "categoryName": "Clínica odontológica",
+  "categories": [
+   "Clínica odontológica"
+  ],
+  "city": "Palhoça",
+  "totalScore": 4.5,
+  "reviewsCount": 120,
+  "permanentlyClosed": false,
+  "temporarilyClosed": false,
+  "address": "Rua Fictícia, 11 - Pedra Branca, Palhoça - SC, 88000-000, Brasil",
+  "neighborhood": "Pedra Branca",
+  "url": "https://maps.google.com/?cid=pPA11",
+  "openingHours": [
+   {
+    "day": "segunda-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "terça-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quarta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quinta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sexta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sábado",
+    "hours": "Fechado"
+   },
+   {
+    "day": "domingo",
+    "hours": "Fechado"
+   }
+  ],
+  "_cidade": "Palhoça",
+  "searchString": "clínica odontológica",
+  "n": 11,
+  "placeId": "pPA11",
+  "title": "Clínica Sorriso Pleno - Palhoça",
+  "cat": "Clínica odontológica",
+  "phone": "(48) 99999-0011",
+  "website": "https://sorrisopleno.com.br/",
+  "bairro": "Pedra Branca"
+ },
+ {
+  "categoryName": "Dentista",
+  "categories": [
+   "Dentista"
+  ],
+  "city": "Palhoça",
+  "totalScore": 4.5,
+  "reviewsCount": 60,
+  "permanentlyClosed": false,
+  "temporarilyClosed": false,
+  "address": "Rua Fictícia, 12 - Centro, Palhoça - SC, 88000-000, Brasil",
+  "neighborhood": null,
+  "url": "https://maps.google.com/?cid=pPA12",
+  "openingHours": [
+   {
+    "day": "segunda-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "terça-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quarta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "quinta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sexta-feira",
+    "hours": "08:00 to 18:00"
+   },
+   {
+    "day": "sábado",
+    "hours": "Fechado"
+   },
+   {
+    "day": "domingo",
+    "hours": "Fechado"
+   }
+  ],
+  "_cidade": "Palhoça",
+  "searchString": "clínica odontológica",
+  "n": 12,
+  "placeId": "pPA12",
+  "title": "OdontoPalhoça",
+  "cat": "Dentista",
+  "phone": "(48) 99999-0012",
+  "website": "https://odontopalhoca.com.br/"
+ },
+ {
+  "categoryName": "Imobiliária",
+  "categories": [
+   "Imobiliária"
+  ],
+  "city": "Palhoça",
+  "totalScore": 4.5,
+  "reviewsCount": 5,
+  "permanentlyClosed": false,
+  "temporarilyClosed": false,
+  "address": "Rua Fictícia, 13 - Centro, Palhoça - SC, 88000-000, Brasil",
+  "neighborhood": null,
+  "url": "https://maps.google.com/?cid=pPA13",
+  "openingHours": [],
+  "_cidade": "Palhoça",
+  "searchString": "imobiliária",
+  "n": 13,
+  "placeId": "pPA13",
+  "title": "Pedra Branca Imóveis",
+  "cat": "Imobiliária",
+  "phone": "(48) 99999-0013",
+  "website": null
+ },
+ {
+  "categoryName": "Imobiliária",
+  "categories": [
+   "Imobiliária"
+  ],
+  "city": "Palhoça",
+  "totalScore": 4.5,
+  "reviewsCount": 95,
+  "permanentlyClosed": false,
+  "temporarilyClosed": false,
+  "address": "Rua Fictícia, 14 - Enseada de Brito, Palhoça - SC, 88000-000, Brasil",
+  "neighborhood": "Enseada de Brito",
+  "url": "https://maps.google.com/?cid=pPA14",
+  "openingHours": [
+   {
+    "day": "segunda-feira",
+    "hours": "09:00 to 18:00"
+   },
+   {
+    "day": "terça-feira",
+    "hours": "09:00 to 18:00"
+   },
+   {
+    "day": "quarta-feira",
+    "hours": "09:00 to 18:00"
+   },
+   {
+    "day": "quinta-feira",
+    "hours": "09:00 to 18:00"
+   },
+   {
+    "day": "sexta-feira",
+    "hours": "09:00 to 18:00"
+   },
+   {
+    "day": "sábado",
+    "hours": "09:00 to 13:00"
+   },
+   {
+    "day": "domingo",
+    "hours": "10:00 to 12:00"
+   }
+  ],
+  "_cidade": "Palhoça",
+  "searchString": "imobiliária",
+  "n": 14,
+  "placeId": "pPA14",
+  "title": "Imobiliária Enseada",
+  "cat": "Imobiliária",
+  "phone": "(48) 99999-0014",
+  "website": "https://enseadaimoveis.com.br/",
+  "bairro": "Enseada de Brito"
+ }
+]

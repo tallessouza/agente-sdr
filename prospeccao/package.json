@@ -1,0 +1,11 @@
+{
+  "name": "prospeccao",
+  "private": true,
+  "type": "module",
+  "description": "Pipeline versionado da prospecção (Peça 1 de 17-prospeccao/PROSPECCAO-NATIVA.md)",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "fixtures": "node test/fixtures/gerar.mjs"
+  }
+}
