@@ -22,6 +22,8 @@ APPROVED_UTILITY = [{"name": "vencedor_001", "category": "UTILITY", "text": "Oi,
 
 
 def prospect(numero, conversation, status, enviado_em, respondeu_em=None):
+    import leads
+    leads.save(numero, {"nome": f"Negócio {conversation}"})
     with prospeccao.connect() as c:
         c.execute("INSERT INTO sdr_prospects(numero,dados,status,enfileirado,jid,conversation,texto,enviado_em,respondeu_em) VALUES (?,?,?,?,?,?,?,?,?)",
                   (numero, json.dumps({"nome": f"Negócio {conversation}"}), status, enviado_em, f"{numero}@cloud", conversation, "Oi", enviado_em, respondeu_em))
@@ -81,6 +83,7 @@ class RetomadaTests(unittest.TestCase):
         found = {c["conversation_id"]: c["familia"] for c in retomada.candidates(now)}
         self.assertEqual(found, {201: "sem_resposta", 203: "conversa", 205: "robo"})
         self.assertTrue(all(c["template"]["name"].startswith(f"retomada_{c['familia']}") for c in retomada.candidates(now)))
+        self.assertEqual({c["negocio"]["nome"] for c in retomada.candidates(now)}, {"Negócio 201", "Negócio 203", "Negócio 205"})  # from the leads table
 
     def test_goes_out_only_in_the_marketing_slot_and_once(self):
         now = time.time()

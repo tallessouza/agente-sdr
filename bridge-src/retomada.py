@@ -15,6 +15,7 @@ import time
 from typing import Any
 
 import cloud
+import leads
 import prospeccao
 import sdr
 import template_health
@@ -95,7 +96,7 @@ def candidates(now: float | None = None, limit: int = 50) -> list[dict[str, Any]
             continue
         template = template_health.pick_weighted(by_family[family])
         out.append({"conversation_id": int(row["conversation"]), "familia": family, "template": {"name": template["name"], "text": template["text"]},
-                    "negocio": json.loads(row.get("dados") or "{}"), "teste_enviado_em": row.get("enviado_em"), "respondeu_em": row.get("respondeu_em"),
+                    "negocio": leads.lead(row["numero"]) or {}, "teste_enviado_em": row.get("enviado_em"), "respondeu_em": row.get("respondeu_em"),
                     "retomadas_anteriores": [{"familia": r["familia"], "status": r["status"], "params": json.loads(r["params"])}
                                              for r in history(int(row["conversation"]))]})
         if len(out) >= limit:

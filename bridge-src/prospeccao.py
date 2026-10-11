@@ -16,6 +16,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Any
 
+import leads
 import sdr
 
 PROSPECT_ENABLED = os.getenv("PROSPECT_ENABLED", "0") == "1"
@@ -44,9 +45,10 @@ PROSPECT_LABEL = os.getenv("PROSPECT_LABEL", "prospeccao")
 # National holidays: no test and no follow-up on these dates (YYYY-MM-DD, comma separated).
 PROSPECT_SKIP_DATES = {d.strip() for d in os.getenv("PROSPECT_SKIP_DATES", "2026-10-12,2026-11-02,2026-11-15,2026-11-20,2026-12-25,2027-01-01").split(",") if d.strip()}
 OFFER = "atendimento"
-# What the agent may know about the business (from the Maps list and the site enrichment).
-FIELDS = ("nome", "nicho", "categoria", "cidade", "uf", "bairro", "nota", "avaliacoes", "site", "instagram", "horario_resumo",
-          "servicos", "site_leva_pro_whatsapp", "dossie", "gancho", "dias_abertos")
+# What the agent may know about the business (from the Maps list and the site enrichment). The data itself lives
+# in the lead tables (leads.py, the central database); sdr_prospects.dados is still written during the transition
+# but nothing here reads it.
+FIELDS = leads.FIELDS
 WEEKDAY_NAMES = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
 WEEKDAY_ON = ["na segunda", "na terça", "na quarta", "na quinta", "na sexta", "no sábado", "no domingo"]
 
@@ -58,6 +60,7 @@ def connect() -> sqlite3.Connection:
               "enviado_em REAL, respondeu_em REAL, automatica INTEGER NOT NULL DEFAULT 0, erro TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS sdr_kv (key TEXT PRIMARY KEY, value TEXT)")
     c.commit()
+    leads.ensure_schema(c)
     return c
 
 
@@ -79,16 +82,22 @@ def enabled() -> bool:
 
 def normalize_number(raw: Any) -> str | None:
     """Brazilian number as 55 + DDD + number; anything else is rejected."""
-    digits = re.sub(r"\D", "", str(raw or ""))
-    if re.match(r"0[3589]00", digits):
-        return None  # 0800/0300/0500/0900: no WhatsApp
-    digits = digits.lstrip("0")
-    if len(digits) in (10, 11):
-        digits = "55" + digits
-    return digits if digits.startswith("55") and len(digits) in (12, 13) else None
+    return leads.normalize_number(raw)
+
+
+def _lead_item(item: dict[str, Any]) -> dict[str, Any]:
+    """The business fields of a queue item, empty ones left out (an API call never clears what the database knows)."""
+    return {k: v for k, v in (item or {}).items() if k not in ("telefone_e164", "numero", "telefone") and v not in (None, "")}
+
+
+def _dados(c: sqlite3.Connection, number: str) -> str:
+    """sdr_prospects.dados, kept in step with the lead tables during the transition (nothing reads it)."""
+    return json.dumps(leads.lead(number, c) or {}, ensure_ascii=False)
 
 
 def enqueue(items: list[dict[str, Any]], now: float | None = None) -> dict[str, int]:
+    """Queue businesses for the test. A new number also writes its data to the lead tables (merged with what they
+    already know); a number already in the queue is left as it is."""
     now = time.time() if now is None else now
     result = {"novos": 0, "repetidos": 0, "invalidos": 0}
     with connect() as c:
@@ -98,10 +107,13 @@ def enqueue(items: list[dict[str, Any]], now: float | None = None) -> dict[str, 
             if not number:
                 result["invalidos"] += 1
                 continue
-            data = {k: item.get(k) for k in FIELDS if item.get(k) not in (None, "")}
-            inserted = c.execute("INSERT OR IGNORE INTO sdr_prospects(numero,dados,status,enfileirado) VALUES (?,?,?,?)",
-                                 (number, json.dumps(data, ensure_ascii=False), "fila", now + index * 1e-3)).rowcount
-            result["novos" if inserted else "repetidos"] += 1
+            if c.execute("SELECT 1 FROM sdr_prospects WHERE numero=?", (number,)).fetchone():
+                result["repetidos"] += 1
+                continue
+            leads.save(number, _lead_item(item), fonte="fila", c=c, now=now)
+            c.execute("INSERT INTO sdr_prospects(numero,dados,status,enfileirado) VALUES (?,?,?,?)",
+                      (number, _dados(c, number), "fila", now + index * 1e-3))
+            result["novos"] += 1
     return result
 
 
@@ -164,17 +176,20 @@ def sent_today(now: float | None = None) -> int:
 
 
 def next_queued(numero: str | None = None, local: datetime | None = None) -> tuple[str, dict[str, Any]] | None:
-    """The next queued business; with `local`, the first one open that day (weekends and holidays)."""
+    """The next queued business; with `local`, the first one open that day (weekends and holidays).
+    The data comes from the lead tables; the open-day filter is open_on() written in SQL over lead_horarios."""
     with connect() as c:
         if numero:
-            row = c.execute("SELECT numero,dados FROM sdr_prospects WHERE numero=? AND status='fila'", (numero,)).fetchone()
-            return (row[0], json.loads(row[1])) if row else None
-        rows = c.execute("SELECT numero,dados FROM sdr_prospects WHERE status='fila' ORDER BY enfileirado").fetchall()
-    for number, raw in rows:
-        data = json.loads(raw)
-        if local is None or open_on(data, local):
-            return number, data
-    return None
+            row = c.execute("SELECT numero FROM sdr_prospects WHERE numero=? AND status='fila'", (numero,)).fetchone()
+        else:
+            day = None if local is None else day_key(local)
+            if day is None or day <= 4:
+                row = c.execute("SELECT numero FROM sdr_prospects WHERE status='fila' ORDER BY enfileirado LIMIT 1").fetchone()
+            else:  # Saturday: open on Saturday; Sunday or holiday: open on Sunday
+                row = c.execute("SELECT p.numero FROM sdr_prospects p WHERE p.status='fila' AND EXISTS (SELECT 1 FROM lead_horarios h "
+                                "WHERE h.numero=p.numero AND h.dia=? AND h.fechado=0) ORDER BY p.enfileirado LIMIT 1",
+                                (5 if day == 5 else 6,)).fetchone()
+        return (row[0], leads.lead(row[0], c) or {}) if row else None
 
 
 def refresh_data(items: list[dict[str, Any]]) -> int:
@@ -183,11 +198,10 @@ def refresh_data(items: list[dict[str, Any]]) -> int:
     with connect() as c:
         for item in items or []:
             number = normalize_number((item or {}).get("telefone_e164") or (item or {}).get("numero"))
-            if not number:
+            if not number or not c.execute("SELECT 1 FROM sdr_prospects WHERE numero=? AND status='fila'", (number,)).fetchone():
                 continue
-            data = {k: item.get(k) for k in FIELDS if item.get(k) not in (None, "")}
-            changed += c.execute("UPDATE sdr_prospects SET dados=? WHERE numero=? AND status='fila'",
-                                 (json.dumps(data, ensure_ascii=False), number)).rowcount
+            leads.save(number, _lead_item(item), fonte="fila", c=c)
+            changed += c.execute("UPDATE sdr_prospects SET dados=? WHERE numero=? AND status='fila'", (_dados(c, number), number)).rowcount
     return changed
 
 
@@ -232,7 +246,7 @@ def origin(jid: str) -> dict[str, Any] | None:
     row = for_jid(jid)
     if not row:
         return None
-    data = json.loads(row["dados"] or "{}")
+    data = leads.lead(row["numero"]) or {}
     if row.get("nome_whatsapp"):
         data["nome_no_whatsapp"] = row["nome_whatsapp"]
     result: dict[str, Any] = {
@@ -254,20 +268,24 @@ def origin(jid: str) -> dict[str, Any] | None:
 def owner_test_persona(rng: random.Random | None = None) -> dict[str, Any]:
     """Data of a real business still in the queue, copied (never touched) to dress the owner's test."""
     with connect() as c:
-        rows = c.execute("SELECT dados FROM sdr_prospects WHERE status='fila' ORDER BY RANDOM() LIMIT 20").fetchall()
-    for (raw,) in rows:
-        data = json.loads(raw or "{}")
-        if data.get("nome"):
-            return data
+        row = c.execute("SELECT p.numero FROM sdr_prospects p JOIN leads l ON l.numero=p.numero WHERE p.status='fila' "
+                        "AND l.nome IS NOT NULL AND l.nome<>'' AND l.fonte<>? ORDER BY RANDOM() LIMIT 1", (leads.TEST_SOURCE,)).fetchone()
+        data = leads.lead(row[0], c) if row else None
+    if data:
+        return data
     return {"nome": "Clínica Sorriso (teste)", "nicho": "clínica odontológica", "cidade": "São José", "uf": "SC",
             "horario_resumo": "seg a sex 8h–18h, sáb 8h–12h"}
 
 
 def simulate_owner_test(numero: str, jid: str, conversation: int, data: dict[str, Any], text: str, now: float | None = None) -> None:
-    """The owner plays a tested business: a prospect row as if the test had just gone out to them."""
+    """The owner plays a tested business: a prospect row as if the test had just gone out to them. The persona is
+    copied to the lead tables under the owner's number (fonte 'teste_do_dono'), never over a real lead."""
     now = time.time() if now is None else now
     with connect() as c:
         c.execute("DELETE FROM sdr_prospects WHERE numero=?", (numero,))
+        leads.delete(numero, fonte=leads.TEST_SOURCE, c=c)
+        if not c.execute("SELECT 1 FROM leads WHERE numero=?", (numero,)).fetchone():
+            leads.save(numero, {k: v for k, v in (data or {}).items() if k in FIELDS and v not in (None, "")}, fonte=leads.TEST_SOURCE, c=c, now=now)
         c.execute("INSERT INTO sdr_prospects(numero,dados,status,enfileirado,jid,conversation,texto,enviado_em,erro) VALUES (?,?,?,?,?,?,?,?,?)",
                   (numero, json.dumps({**data, "teste_do_dono": True}, ensure_ascii=False), "enviado", now, jid, conversation, text, now, "simulação do dono"))
 
@@ -275,6 +293,7 @@ def simulate_owner_test(numero: str, jid: str, conversation: int, data: dict[str
 def clear_owner_test(numero: str) -> None:
     with connect() as c:
         c.execute("DELETE FROM sdr_prospects WHERE numero=? AND erro='simulação do dono'", (numero,))
+        leads.delete(numero, fonte=leads.TEST_SOURCE, c=c)
 
 
 def replied(jid: str, ts: float | None = None) -> bool:
@@ -356,8 +375,8 @@ def schedule_pitch(conversation: int, sent_ts: float, automatic: bool = False, n
         return None
     send_at = pitch_send_at(max(sent_ts, now) if automatic else sent_ts, seed=sent_ts)
     with connect() as c:
-        row = c.execute("SELECT dados FROM sdr_prospects WHERE conversation=?", (conversation,)).fetchone()
-    gancho = str(json.loads(row[0]).get("gancho") or "") if row else ""
+        row = c.execute("SELECT numero FROM sdr_prospects WHERE conversation=?", (conversation,)).fetchone()
+        gancho = str((leads.lead(row[0], c) or {}).get("gancho") or "") if row else ""
     return sdr.add_followup(conversation, send_at, pitch_text(sent_ts, send_at, automatic, gancho, seconds), "retomada única do teste de atendimento",
                             after_ts=now, stage="prospeccao")
 
