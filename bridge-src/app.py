@@ -20,6 +20,7 @@ import leads
 import ligacoes
 import template_health
 import vigia
+import entrada
 import templates_db
 import random
 import sdr
@@ -116,6 +117,7 @@ async def start_background_workers() -> None:
     if cloud.enabled():
         asyncio.create_task(alertas_worker(), name="alertas")
         asyncio.create_task(vigia_worker(), name="vigia")
+        asyncio.create_task(entrada.ensure_label(), name="label-teste-instagram")
     if os.getenv("BRIDGE_RECOVER", "1") != "0":
         try:
             recover_turns()
@@ -1892,7 +1894,13 @@ async def download_chatwoot_attachment(attachment: dict[str, Any]) -> tuple[byte
     else:
         headers = {"api_access_token": CHATWOOT_APP_TOKEN} if CHATWOOT_APP_TOKEN else {}
         async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-            response = await client.get(str(url), headers=headers)
+            # 11/10 (#147): the webhook can arrive before Chatwoot stored the file (404): wait and try again.
+            for wait in (0, 2, 4, 8):
+                if wait:
+                    await asyncio.sleep(wait)
+                response = await client.get(str(url), headers=headers)
+                if response.status_code != 404:
+                    break
             response.raise_for_status()
             payload = response.content
             mimetype = response.headers.get("content-type", mimetype).split(";", 1)[0]
@@ -2322,6 +2330,11 @@ async def cloud_inbox_event(payload: dict[str, Any]) -> None:
                 logger.exception("Failed to persist media history for jid=%s", jid)
     if not content and media:
         content = "[mídia recebida]"
+    if not content and payload.get("attachments"):
+        # The file could not be downloaded: tell the agent instead of dropping the message (#147, 11/10: an audio lost).
+        kinds = {str(a.get("file_type") or "arquivo") for a in payload.get("attachments") or [] if isinstance(a, dict)}
+        nome = "um áudio" if "audio" in kinds else "uma foto" if "image" in kinds else "um vídeo" if "video" in kinds else "um arquivo"
+        content = f"[o lead mandou {nome} que não consegui abrir; peça com naturalidade para ele mandar por escrito o que disse]"
     if not content:
         return
     if sdr.is_owner(jid):
@@ -2333,6 +2346,13 @@ async def cloud_inbox_event(payload: dict[str, Any]) -> None:
             return
     # Chatwoot already stored the raw text; the agent and the brain only ever see the mark.
     content, _secret = sdr.redact_credentials(content)
+    try:
+        entry = await entrada.on_message(conversation_id, jid, content)
+    except Exception:
+        logger.exception("Instagram entry check failed conversation=%s", conversation_id)
+        entry = None
+    if entry == "empresa":
+        return  # the company asked for the test: paused, Talles sends it (entrada.py)
     prospeccao.replied(jid)
     if sdr.robot_echo(conversation_id, content, echo_seconds=ROBOT_ECHO_SECONDS):
         # The robot answering one of our messages again: it stays in Chatwoot and in the turn log, but the agent
