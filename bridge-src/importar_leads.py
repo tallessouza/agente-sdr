@@ -164,6 +164,23 @@ def main(argv: list[str] | None = None) -> int:
                     continue
                 raw_sources.append(("funil-relatorio", f"{day}:{item.get('conversa')}", item, None, stamp))
                 tally("funil_relatorio", leads.save_relatorio(day, item, c=c))
+        # Enrichment that until 11/10 lived only in files (Talles: "nada dependa de JSON"): the site signals (pixels,
+        # proofs, CNPJs), the wealth lens (priority, signals, proofs, partners) and the CNPJ cache, all in lead_fontes;
+        # the lens priority also on the lead.
+        for name, fonte in (("sites-sinais.json", "sites-sinais"), ("qualificacao-riqueza.json", "qualificacao"), ("cnpj-cache.json", "cnpj")):
+            data, stamp = read(name)
+            items = (data if isinstance(data, list) else [{"_chave": k, **(v if isinstance(v, dict) else {"valor": v})} for k, v in data.items()]
+                     if isinstance(data, dict) else [])
+            for item in items:
+                numero = leads.normalize_number(item.get("telefone_e164")) if fonte == "qualificacao" else None
+                key = numero or item.get("url") or item.get("cnpj") or item.get("_chave")
+                if not key:
+                    tally(f"{name} (sem chave)", False)
+                    continue
+                raw_sources.append((fonte, str(key), item, numero, stamp))
+                if fonte == "qualificacao" and numero and item.get("prioridade") is not None:
+                    tally("leads.prioridade (lente)", c.execute("UPDATE leads SET prioridade=? WHERE numero=? AND prioridade IS NOT ?",
+                                                                 (item["prioridade"], numero, item["prioridade"])).rowcount > 0)
         if inline is not None and isinstance(inline.get("funil-classificado.json"), list):
             for item in inline["funil-classificado.json"]:
                 raw_sources.append(("funil-classificado", str(item.get("conversation")), item, None, now))
