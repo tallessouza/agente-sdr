@@ -15,6 +15,9 @@ import handover
 import monitor
 import prospeccao
 import retomada
+import alertas
+import leads
+import ligacoes
 import template_health
 import templates_db
 import random
@@ -109,6 +112,8 @@ async def start_background_workers() -> None:
     if cloud.enabled():
         asyncio.create_task(monitor_worker(), name="monitor")
     asyncio.create_task(brain_event_worker(), name="brain-events")
+    if cloud.enabled():
+        asyncio.create_task(alertas_worker(), name="alertas")
     if os.getenv("BRIDGE_RECOVER", "1") != "0":
         try:
             recover_turns()
@@ -908,11 +913,14 @@ async def escalate(jid: str, source_id: str, conversation_id: int, directive: di
             await step()
         except Exception:
             logger.exception("Escalation step failed for conversation=%s", conversation_id)
-    if sdr.NOTIFY_NUMBER:
-        try:
-            await send_evolution(sdr.NOTIFY_NUMBER, sdr.escalation_alert(directive, jid_number(jid), conversation_id))
-        except Exception:
-            logger.exception("Owner escalation alert failed for conversation=%s", conversation_id)
+    # 11/10: Evolution was down and the call booked with the Ademir never reached Talles; alertas tries Telegram,
+    # the official number (internal template) and Evolution, once per escalation.
+    try:
+        motivo = str(directive.get("motivo") or "")
+        await alertas.notify(f"escalada:{conversation_id}:{hashlib.sha1(motivo.encode()).hexdigest()[:10]}", "escalada",
+                             sdr.escalation_alert(directive, jid_number(jid), conversation_id), conversation_id, send_evolution)
+    except Exception:
+        logger.exception("Owner escalation alert failed for conversation=%s", conversation_id)
 
 _background_tasks: set[asyncio.Task] = set()
 
@@ -1471,7 +1479,7 @@ async def prospect_once(now: float | None = None, numero: str | None = None) -> 
         if not prospeccao.in_window(local): return "fora_da_janela"
         if now < float(prospeccao.kv_get("proximo_envio") or 0): return "intervalo"
     if not numero and PROSPECT_CHANNEL == "cloud" and cloud.enabled():
-        sent = await send_due_retomada(now)
+        sent = await resend_after_131049(now) or await send_due_retomada(now)
         if sent:
             prospeccao.kv_set("proximo_envio", str(now + prospeccao.next_gap()))
             return sent
@@ -1598,6 +1606,50 @@ async def prospect_cloud(number: str, data: dict[str, Any], now: float) -> str:
         logger.exception("Prospect Chatwoot bookkeeping failed conversation=%s", conversation_id)
     logger.info("Prospect sent number=%s conversation=%s channel=cloud", number, conversation_id)
     return "enviado"
+
+
+RESEND_AFTER = int(os.getenv("PROSPECT_RESEND_AFTER_SECONDS", str(20 * 3600)))
+
+
+async def resend_after_131049(now: float) -> str | None:
+    """A first contact Meta held for the person's marketing cap (131049) gets one more try, UTILITY only, the next day,
+    on the conversation it already has."""
+    with prospeccao.connect() as c:
+        row = c.execute("SELECT numero, conversation, erro FROM sdr_prospects WHERE status='reenviar' AND conversation IS NOT NULL "
+                        "AND enviado_em <= ? ORDER BY enviado_em LIMIT 1", (now - RESEND_AFTER,)).fetchone()
+    if not row:
+        return None
+    numero, conversation, erro = row
+    if not any(t.get("category") == "UTILITY" for t in cloud.approved_templates()):
+        return None
+    day = datetime_local(now).strftime("%Y-%m-%d")
+    data = leads.lead(numero) or {}
+    text, template = cloud.pick_template({**data, **cloud.test_fields(prospeccao.greeting(datetime_local(now)).lower())}, category="UTILITY")
+    prospeccao.update(numero, status="enviando", texto=text, enviado_em=now, erro=f"{erro or ''} | reenvio por utility após 131049"[:200])
+    try:
+        await cloud.post_message(int(conversation), text, template=template, attributes={"bridge_template": template["name"]})
+    except Exception as exc:
+        logger.exception("Resend after 131049 failed number=%s", numero)
+        prospeccao.update(numero, status="erro", erro=f"reenvio incerto: {str(exc)[:150]}")
+        return "erro"
+    prospeccao.kv_set(f"tpl:{day}:UTILITY", str(int(prospeccao.kv_get(f"tpl:{day}:UTILITY") or 0) + 1))
+    templates_db.record_send(template["name"], int(conversation), day)
+    current = prospeccao.for_jid(cloud.jid_for(numero))
+    if current and current.get("status") == "enviando":
+        prospeccao.update(numero, status="enviado")
+    logger.info("Resent after 131049 number=%s template=%s", numero[-4:], template["name"])
+    return "reenviado"
+
+
+async def alertas_worker() -> None:
+    while True:
+        try:
+            await alertas.patrol(send_evolution)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("alert patrol failed")
+        await asyncio.sleep(alertas.ALERT_SECONDS)
 
 
 async def send_due_retomada(now: float) -> str | None:
@@ -1946,6 +1998,20 @@ async def sdr_retomada_candidates(request: Request):
     if (e:=_sdr_auth(request)): return e
     return {"candidatos": retomada.candidates()}
 
+@app.post("/sdr/ligacoes")
+async def sdr_ligacao(request: Request):
+    """Talles records the result of a call (the panel does it through the bridge container)."""
+    if (e:=_sdr_auth(request)): return e
+    try:
+        return {"id": ligacoes.registrar(await request.json())}
+    except (KeyError, ValueError) as exc:
+        return JSONResponse({"detail": str(exc)}, 422)
+
+@app.get("/sdr/ligacoes")
+async def sdr_ligacoes(request: Request, conversation: int | None = None):
+    if (e:=_sdr_auth(request)): return e
+    return {"ligacoes": ligacoes.listar(conversation)}
+
 @app.get("/sdr/retomada/template")
 async def sdr_retomada_template(familia: str, request: Request):
     """An approved retomada template of the family, for a touch of the sequence that falls after the window."""
@@ -2192,7 +2258,10 @@ async def cloud_inbox_event(payload: dict[str, Any]) -> None:
             current = prospeccao.for_jid(row[0])
             if current and current.get("status") in {"enviado", "enviando"} and not current.get("respondeu_em"):
                 erro = str(attributes.get("external_error") or "falha na entrega")[:200]
-                prospeccao.update(current["numero"], status="sem_whatsapp" if "131026" in erro else "erro", erro=erro)
+                # 131026: no WhatsApp (never retried). 131049: Meta held a marketing message for this person's cap: one more
+                # try the next day, UTILITY only, on the same conversation (resend_after_131049).
+                status = "sem_whatsapp" if "131026" in erro else ("reenviar" if "131049" in erro and "131049" not in str(current.get("erro") or "") else "erro")
+                prospeccao.update(current["numero"], status=status, erro=erro)
         return
     if event != "message_created" or payload.get("private"):
         return

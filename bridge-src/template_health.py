@@ -136,6 +136,8 @@ def tipo_of(name: str, meta: dict[str, Any] | None = None) -> str | None:
     """'retomada', 'abertura' (first contact, generated or legacy) or None (not ours, e.g. hello_world)."""
     if is_retomada(name):
         return "retomada"
+    if name.startswith("alerta_interno_"):
+        return "interno"
     return "abertura" if params_for(name, meta) is not None else None
 
 
@@ -248,7 +250,7 @@ def build_pool(templates: list[dict[str, Any]], meta: dict[str, Any]) -> list[di
     for t in templates:
         params = params_for(t.get("name", ""), meta)
         text = body_of(t)
-        if params is None or is_retomada(t.get("name", "")) or t.get("status") != "APPROVED" or t.get("category") not in {"UTILITY", "MARKETING"} or not text or not usable(t, meta):
+        if params is None or not_opening(t.get("name", "")) or t.get("status") != "APPROVED" or t.get("category") not in {"UTILITY", "MARKETING"} or not text or not usable(t, meta):
             continue
         if health(t) == "RED":
             continue  # recipients are blocking or reporting it: never sent again
@@ -286,7 +288,7 @@ async def trim_marketing(templates: list[dict[str, Any]], meta: dict[str, Any]) 
     pool = build_pool(templates, meta)
     utility = sum(t["category"] == "UTILITY" for t in pool)
     marketing = [t for t in templates if t.get("status") in {"APPROVED", "PENDING"} and t.get("category") == "MARKETING"
-                 and params_for(t.get("name", ""), meta) is not None and not is_retomada(t.get("name", ""))]
+                 and params_for(t.get("name", ""), meta) is not None and not not_opening(t.get("name", ""))]
     allowed = int(utility * MARKETING_KEEP_SHARE / (1 - MARKETING_KEEP_SHARE)) if MARKETING_KEEP_SHARE < 1 else len(marketing)
     # Healthiest approved first; pending (no health yet) and RED ones are always among the deleted.
     keepable = sorted([t for t in marketing if t.get("status") == "APPROVED" and health(t) != "RED"],
@@ -376,7 +378,7 @@ async def check_once(sync_chatwoot: Any = None) -> dict[str, Any]:
     templates_db.set_pool("abertura", [t["name"] for t in pool])
     # The farm keeps the target in HEALTHY utility templates: a YELLOW one still sends (less) but gets replaced.
     utility = sum(t["category"] == "UTILITY" and t.get("saude") != "YELLOW" for t in pool)
-    pending = sum(1 for t in templates if t.get("status") == "PENDING" and params_for(t.get("name", ""), meta) is not None and not is_retomada(t.get("name", "")))
+    pending = sum(1 for t in templates if t.get("status") == "PENDING" and params_for(t.get("name", ""), meta) is not None and not not_opening(t.get("name", "")))
     submitted: list[str] = []
     count = new_batch_size(utility, pending, meta)
     if count:
@@ -384,6 +386,7 @@ async def check_once(sync_chatwoot: Any = None) -> dict[str, Any]:
         today = time.strftime("%Y-%m-%d", time.gmtime(time.time() - 3 * 3600))
         meta.setdefault("submetidos", {})[today] = meta.get("submetidos", {}).get(today, 0) + len(submitted)
     retomadas = await ensure_retomadas(templates, meta)
+    await ensure_interno(templates, meta)
     save_meta(meta)
     if sync_chatwoot:
         await sync_chatwoot()
@@ -428,6 +431,11 @@ RETOMADAS = {
 
 def is_retomada(name: str) -> bool:
     return str(name or "").startswith("retomada_")
+
+
+def not_opening(name: str) -> bool:
+    """Retomada and internal alert templates never enter the first-contact pool, its trimming or its counts."""
+    return is_retomada(name) or str(name or "").startswith("alerta_interno_")
 
 
 # The retomada farm (Talles 11/10: "templates sendo farmados, tanto de abertura quanto de retomada"): variations of
@@ -519,6 +527,25 @@ async def ensure_retomadas(templates: list[dict[str, Any]], meta: dict[str, Any]
     meta["submetidos_retomada"][today] = int(meta["submetidos_retomada"].get(today, 0)) + len(submitted)
     usable = [t["name"] for t in templates if is_retomada(t.get("name", "")) and t.get("status") == "APPROVED" and health(t) != "RED"]
     templates_db.set_pool("retomada", usable)
+    return submitted
+
+
+async def ensure_interno(templates: list[dict[str, Any]], meta: dict[str, Any]) -> list[str]:
+    """The owner alert template (alertas.py): submitted once as UTILITY; approved and not RED, it is the 'interno' pool."""
+    import alertas
+    name, text, example = alertas.ALERT_TEMPLATE
+    known = {t.get("name") for t in templates}
+    submitted = []
+    if name not in known and not meta["templates"].get(name, {}).get("submetido"):
+        body = {"name": name, "category": "UTILITY", "language": "pt_BR", "components": [{"type": "BODY", "text": text, "example": {"body_text": [example]}}]}
+        try:
+            await graph("POST", f"{WABA}/message_templates", body)
+            meta["templates"][name] = {"scheme": "interno", "tipo": "interno", "params": ["texto"], "estado": "pronto", "submetido": time.time()}
+            submitted.append(name)
+        except Exception as exc:
+            logger.warning("Alert template %s not submitted: %s", name, exc)
+    templates_db.set_pool("interno", [t["name"] for t in templates if tipo_of(t.get("name", ""), meta) == "interno"
+                                      and t.get("status") == "APPROVED" and health(t) != "RED"])
     return submitted
 
 
