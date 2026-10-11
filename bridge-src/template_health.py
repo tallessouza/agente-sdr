@@ -280,6 +280,41 @@ async def edit_baits(templates: list[dict[str, Any]], meta: dict[str, Any]) -> l
     return edited
 
 
+def usage() -> dict[str, int]:
+    """Sends per template (all days): on a cleanup the most used ones stay (Talles 11/10: "mantém os que teve mais uso")."""
+    try:
+        with templates_db.connect() as c:
+            return {r[0]: int(r[1] or 0) for r in c.execute("SELECT name, SUM(enviados) FROM tpl_envios GROUP BY name")}
+    except Exception:
+        return {}
+
+
+async def trim_retomada_marketing(templates: list[dict[str, Any]]) -> list[str]:
+    """The retomadas' own 80/20 in stock (Talles 11/10: "deixa 80/20 de abertura e 80/20 de retomada"): as many MARKETING
+    ones as the approved UTILITY ones allow; kept first the family with no utility (Meta takes "sem_resposta" only as
+    marketing), then the most used, then the healthiest, then the oldest. The rest is deleted at Meta."""
+    retomadas = [t for t in templates if is_retomada(t.get("name", ""))]
+    utility = [t for t in retomadas if t.get("status") == "APPROVED" and t.get("category") == "UTILITY" and health(t) != "RED"]
+    if not utility:
+        return []  # no utility approved yet: nothing goes by the 80/20 anyway, and deleting would only make the farm ask again
+    allowed =int(len(utility) * MARKETING_KEEP_SHARE / (1 - MARKETING_KEEP_SHARE)) if MARKETING_KEEP_SHARE < 1 else len(retomadas)
+    with_utility = {familia_of(t["name"]) for t in utility}
+    marketing = [t for t in retomadas if t.get("status") in {"APPROVED", "PENDING"} and t.get("category") == "MARKETING"]
+    used = usage()
+    ranked = sorted([t for t in marketing if t.get("status") == "APPROVED" and health(t) != "RED"],
+                    key=lambda t: (familia_of(t["name"]) in with_utility, -used.get(t["name"], 0),
+                                   HEALTH_RANK.get(health(t), 1), int(t.get("id") or 0)))
+    keep = {t["name"] for t in ranked[:allowed]}
+    deleted = []
+    for t in [t for t in marketing if t["name"] not in keep]:
+        try:
+            await graph("DELETE", f"{WABA}/message_templates?name={t['name']}&hsm_id={t['id']}")
+            deleted.append(t["name"])
+        except Exception as exc:
+            logger.warning("Retomada marketing template %s not deleted: %s", t["name"], exc)
+    return deleted
+
+
 async def trim_marketing(templates: list[dict[str, Any]], meta: dict[str, Any]) -> list[str]:
     """Delete first-contact templates Meta put in MARKETING, approved or still pending (Talles: no need to keep them).
 
@@ -291,8 +326,9 @@ async def trim_marketing(templates: list[dict[str, Any]], meta: dict[str, Any]) 
                  and params_for(t.get("name", ""), meta) is not None and not not_opening(t.get("name", ""))]
     allowed = int(utility * MARKETING_KEEP_SHARE / (1 - MARKETING_KEEP_SHARE)) if MARKETING_KEEP_SHARE < 1 else len(marketing)
     # Healthiest approved first; pending (no health yet) and RED ones are always among the deleted.
+    used = usage()
     keepable = sorted([t for t in marketing if t.get("status") == "APPROVED" and health(t) != "RED"],
-                      key=lambda t: (HEALTH_RANK.get(health(t), 1), -int(t.get("id") or 0)))
+                      key=lambda t: (HEALTH_RANK.get(health(t), 1), -used.get(t["name"], 0), -int(t.get("id") or 0)))
     keep = {t["name"] for t in keepable[:allowed]}
     deleted = []
     for t in [t for t in marketing if t["name"] not in keep]:
@@ -557,15 +593,22 @@ async def ensure_retomadas(templates: list[dict[str, Any]], meta: dict[str, Any]
                 submitted.append(v["name"])
                 tried[f"{today}:{familia}"] = 1
                 left -= 1
-        healthy = [t for t in templates if familia_of(t.get("name", "")) == familia and not is_utility_variant(t.get("name", ""))
+        healthy = [t for t in templates if familia_of(t.get("name", "")) == familia and t.get("category") == "MARKETING"
                    and (t.get("status") == "PENDING" or (t.get("status") == "APPROVED" and health(t) not in {"RED", "YELLOW"}))]
-        need = min(max(0, RETOMADA_TARGET - len(healthy)), left)
+        has_utility = any(familia_of(t.get("name", "")) == familia and t.get("status") == "APPROVED" and t.get("category") == "UTILITY"
+                          for t in templates)
+        # Marketing only where Meta gives no utility (11/10: the retomadas' 80/20 keeps just a few), at most one.
+        need = 0 if has_utility else min(max(0, 1 - len(healthy)), left)
         for v in new_retomada_variants(familia, need, templates, meta):
             if await submit_retomada(v["name"], familia, v["text"], v["example"], meta):
                 submitted.append(v["name"])
                 left -= 1
     meta["submetidos_retomada"][today] = int(meta["submetidos_retomada"].get(today, 0)) + len(submitted)
-    usable = [t["name"] for t in templates if is_retomada(t.get("name", "")) and t.get("status") == "APPROVED" and health(t) != "RED"]
+    trimmed = set(await trim_retomada_marketing(templates))
+    if trimmed:
+        logger.warning("Retomada marketing templates deleted for the 80/20: %s", sorted(trimmed))
+    usable = [t["name"] for t in templates if is_retomada(t.get("name", "")) and t.get("status") == "APPROVED" and health(t) != "RED"
+              and t["name"] not in trimmed]
     templates_db.set_pool("retomada", usable)
     return submitted
 

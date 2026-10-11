@@ -139,6 +139,33 @@ class TemplateDbTests(unittest.TestCase):
             asyncio.run(th.ensure_retomadas(templates, meta))
         self.assertFalse(any(b["name"].startswith("retomada_sem_resposta_u") for b in posted))  # already tried today
 
+    def test_retomada_stock_kept_at_80_20_with_the_most_used_marketing(self):
+        # Talles 11/10: "deixa 80/20 de abertura e 80/20 de retomada ... mantém os que teve mais uso".
+        body = lambda text: [{"type": "BODY", "text": text}]
+        templates = [{"id": str(i), "name": n, "status": "APPROVED", "category": "UTILITY", "components": body("Oi, {{1}}. a {{2}} b. {{3}} c.")}
+                     for i, n in enumerate(["retomada_conversa_u01", "retomada_conversa_u02", "retomada_robo_u01", "retomada_robo_u02"])]
+        templates += [{"id": str(100 + i), "name": name, "status": "APPROVED", "category": "MARKETING", "components": body(text)}
+                      for i, (name, (_f, text, _e)) in enumerate(th.RETOMADAS.items())]
+        templates_db.record_send("retomada_sem_resposta_02", None, "2026-10-11")
+        templates_db.record_send("retomada_conversa_01", None, "2026-10-11")
+        templates_db.record_send("retomada_conversa_01", None, "2026-10-11")
+        deleted_paths = []
+
+        async def graph(method, path, body=None):
+            if method == "DELETE":
+                deleted_paths.append(path)
+            return {"id": "1"}
+
+        with patch.object(th, "graph", new=graph):
+            deleted = asyncio.run(th.trim_retomada_marketing(templates))
+        # 4 utility -> 1 marketing: the family without utility first (sem_resposta), the most used of it.
+        self.assertEqual(len(deleted), len(th.RETOMADAS) - 1)
+        self.assertNotIn("retomada_sem_resposta_02", deleted)
+        self.assertIn("retomada_conversa_01", deleted)  # more used, but its family has utility
+        self.assertEqual(len(deleted_paths), len(deleted))
+        with patch.object(th, "graph", new=graph):
+            self.assertEqual(asyncio.run(th.trim_retomada_marketing([t for t in templates if t["category"] == "MARKETING"])), [])
+
     def test_health_report_counts_sends_failures_and_replies(self):
         meta = th.load_meta()
         meta["templates"]["vencedor_001"] = {"scheme": "vencedor", "params": ["saudacao_min"], "estado": "pronto"}
