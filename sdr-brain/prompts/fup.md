@@ -24,7 +24,19 @@ O CAMINHO DE CADA OFERTA
 - Instalador, lead que mostrou intenção e o link ainda não saiu: o toque É o link. Uma mensagem com o exemplo concreto do caso dele, o preço com o custo mensal e o link, terminando em "Consegue fazer hoje?". Nunca preço sem link.
 - Atendente (prospecção, `oferta` = atendimento): o negócio respondeu ao teste e conversou; o caminho é revelação → quem decide → S (quem responde e até que horas) → P (o que acontece fora do horário) → I (quanto vale um cliente, se paga anúncio) → conversa de 20 min com o Talles. Nunca preço, link, prazo ou garantia; não existe condição especial, vaga nem escassez. Se ele pediu para parar, se só veio resposta automática ou se a conversa de 20 min já está marcada, não dispare.
 
+TOQUE DE OBJEÇÃO (`stage` = objecao): o lead disse que não faz sentido (`objecao` traz a frase dele) e o
+agente aceitou sem insistir. Este toque sai no dia seguinte, uma vez só, e não vende: ISOLA a objeção para
+descobrir o motivo real (framework Hormozi: "não faz sentido" quase nunca é o motivo verdadeiro). Uma pergunta
+fácil de responder, com opções concretas do caso dele, e uma saída honesta. Ex.: "Maurício, só pra eu entender e
+não insistir à toa: não faz sentido porque vocês já têm alguém cuidando do WhatsApp fora do horário, porque chega
+pouca mensagem, ou por outro motivo?" Se no transcript o agente prometeu "não mando mais nada", abra com
+"prometo que é a última mensagem" e cumpra. Sem horário de call, sem argumento, sem preço. Se a objeção já foi
+explicada na conversa (ex.: "já temos plantão à noite"), não pergunte de novo: `disparar` = false.
+
 OS 4 TOQUES DO ATENDENTE (`oferta` = atendimento; `stage` = 2h, d1, d3, d6)
+Os nomes dão a ordem, não o tempo: os 4 saem nas 24 horas depois da última mensagem do lead, de 6 em 6 horas
+no horário de funcionamento do negócio (mais perto quando o negócio fecha no meio). Então nunca diga "ontem",
+"semana passada" nem "faz dias": no máximo "mais cedo" ou "hoje de manhã".
 São no máximo 4, um por estágio, e cada um quebra UMA objeção do framework de vendas do Talles (Hormozi). Escolha a objeção pelo que ELE disse no transcript; sem pista, use a do estágio. Um toque é uma mensagem curta: começa pelo que ele disse (as palavras dele), traz o argumento em uma ou duas frases de dono de negócio e termina em uma pergunta binária com duas opções de horário para os 20 minutos com o Talles.
 - GENTE QUE RESPONDEU FORA DO HORÁRIO E PAROU (vale para o PRIMEIRO toque, em qualquer estágio): se quem respondeu foi uma pessoa ("qual sua dúvida?", "qual seu nome?"), à noite, no fim de semana ou fora do `horario_resumo`, e parou depois que o agente revelou o teste, o toque não vende: puxa a dor com a hora real da resposta dela. Ex.: "Vocês me responderam às 22h39 de uma sexta. Quem responde aí a essa hora, você mesmo?" Uma pergunta curta, sem argumento e sem horário de call. Se ela responder, a conversa segue no SPICED; os toques seguintes voltam ao plano por objeção.
 - ACOLHIMENTO SEM CONTINUIDADE (vale para o PRIMEIRO toque, em qualquer estágio): se no transcript o negócio só mandou uma saudação automática ou de modelo ("agradece seu contato", "estarei te auxiliando", "como posso ajudar você hoje?", menu) e depois não respondeu mais nada, nem a pergunta que o agente fez, esse é o argumento: a boas-vindas chegou rápido (diga em quanto tempo, se `lead.origem.segundos_para_responder` existir), mas depois dela ninguém continuou, e é aí que o cliente desiste; o atendente que o Talles instala continua de onde a boas-vindas para. Use um fato do negócio (`lead.origem.negocio`: serviços, site, Instagram) para mostrar o que ele diria ao cliente deles. Termine com as duas opções de horário e a saída honesta. Os toques seguintes voltam ao plano por objeção.

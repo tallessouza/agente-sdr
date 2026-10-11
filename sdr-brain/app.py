@@ -19,6 +19,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 
 import crm
 import enrichment
+import horario
 import oferta
 
 LOGGER = logging.getLogger("sdr_brain")
@@ -40,8 +41,14 @@ KIWIFY_COVERED_STAGES = {"5min", "30min", "2h"}
 POST_PRICE_STAGE = ("d4", 345600)
 # Prospecção (oferta atendimento): only whoever answered gets touches, and only these four,
 # each breaking one objection of the Hormozi framework (fup.md); never at night (Talles, 09/10).
-ATENDIMENTO_STAGES = [("2h", 7200), ("d1", 86400), ("d3", 259200), ("d6", 518400)]
-ATENDIMENTO_HOURS = (9, 20)
+# The names keep the order of the objections in fup.md (tempo, fit, valor, adiamento); WHEN they go out comes
+# from horario.touch_times: 4 touches inside the 24 h window, 6 h apart in the business's open hours, closer
+# when closed hours eat the window (Talles, 10/10). The delays below are only the nominal spacing.
+ATENDIMENTO_STAGES = [("2h", 6 * 3600), ("d1", 12 * 3600), ("d3", 18 * 3600), ("d6", 24 * 3600)]
+# Touches end before the official number's 24 h window closes (the bridge drops free text after 23 h 30).
+ATENDIMENTO_WINDOW_SECONDS = int(os.getenv("SDR_ATENDIMENTO_WINDOW_SECONDS", str(23 * 3600)))
+# No touch of any kind right after the agent spoke (10/10: a same-day "next step" fired 41 s after the reveal).
+MIN_SILENCE_SECONDS = int(os.getenv("SDR_MIN_SILENCE_SECONDS", "7200"))
 
 
 def stages_for(offer: str | None, post_price: bool) -> list[tuple[str, int]]:
@@ -336,6 +343,19 @@ def due_stage(age: float, post_price: bool, offer: str | None = None) -> str | N
     return reached[-1] if reached else None
 
 
+def atendimento_touch_times(state: dict[str, Any], anchor: float, last_lead: float) -> list[float]:
+    """The 4 attendant touches: inside the 24 h window opened by the lead, in the business's open hours."""
+    negocio = (((state.get("lead") or {}).get("origem") or {}).get("negocio") or {})
+    window_end = (last_lead or anchor) + ATENDIMENTO_WINDOW_SECONDS
+    return horario.touch_times(anchor, window_end, horario.parse_hours(negocio.get("horario_resumo")), BUSINESS_TZ)
+
+
+def atendimento_due_stage(state: dict[str, Any], anchor: float, last_lead: float, now: float) -> str | None:
+    """Latest attendant touch already due (older ones are skipped, never burst)."""
+    reached = [name for (name, _), when in zip(ATENDIMENTO_STAGES, atendimento_touch_times(state, anchor, last_lead)) if now >= when]
+    return reached[-1] if reached else None
+
+
 def sequence(conversation_id: int) -> tuple[float, float | None] | None:
     with closing(connection()) as conn:
         row = conn.execute("SELECT anchor, ended_at FROM sequences WHERE conversation_id=?", (conversation_id,)).fetchone()
@@ -553,6 +573,11 @@ async def followup_once(now: float | None = None) -> None:
         records = state.get("lead", {}).get("registros", {})
         seq = sequence(conversation_id)
         active = seq is not None and seq[1] is None
+        if records.get("objecao") and str(records.get("opt_out") or "").strip().lower() != "sim" and not state.get("paused"):
+            # "Não faz sentido pra nós" is an objection, not a stop (Talles, 10/10): one touch the next day to
+            # find out why, then the sequence is over unless the lead answers.
+            await objection_touch(conversation_id, state, records, current, local_state)
+            continue
         if state.get("paused") or records.get("desfecho"):
             if active:
                 end_sequence(conversation_id, current, "pausada" if state.get("paused") else "desfecho")
@@ -564,6 +589,7 @@ async def followup_once(now: float | None = None) -> None:
         step = lead_step(conversation_id)
         due = step_due_ts(step) if step and step.get("status") == "pendente" else None
         if due is not None and current >= due and not decided(conversation_id, "prazo", due) \
+                and current - last_agent >= MIN_SILENCE_SECONDS \
                 and not (last_lead >= last_agent and last_lead > float(step.get("atualizado_em") or 0)):
             await deadline_touch(conversation_id, state, step, due, current, last_lead)
             continue
@@ -584,13 +610,12 @@ async def followup_once(now: float | None = None) -> None:
         anchor = seq[0]
         offer_now = oferta.current_offer(state.get("context") or {}) or records.get("oferta")
         stages = stages_for(offer_now, bool(records.get("preco_dado")))
-        stage = due_stage(current - anchor, bool(records.get("preco_dado")), offer_now)
+        if offer_now == "atendimento":
+            stage = atendimento_due_stage(state, anchor, last_lead, current)
+        else:
+            stage = due_stage(current - anchor, bool(records.get("preco_dado")), offer_now)
         if stage is None:
             continue
-        if offer_now == "atendimento":
-            hour = datetime.fromtimestamp(current, BUSINESS_TZ).hour
-            if not ATENDIMENTO_HOURS[0] <= hour < ATENDIMENTO_HOURS[1]:
-                continue  # touches to businesses only in the daytime; it fires on the next pass inside the window
         if stage in KIWIFY_COVERED_STAGES and str(records.get("checkout_iniciado") or "").strip().lower() == "sim":
             # O recuperador da Kiwify só cobre quem pôs o telefone no checkout (correção do Talles, 09/10):
             # quem só recebeu o link na conversa não está coberto e segue recebendo os toques.
@@ -632,6 +657,47 @@ async def followup_once(now: float | None = None) -> None:
             await crm.activity(conversation_id, f"⏱️ Toque {stage} não enviado: {motivo}")
         if final:
             end_sequence(conversation_id, current, "completa")
+
+
+def objection_touch_time(state: dict[str, Any], last_agent: float, last_lead: float) -> float:
+    """The next day, one hour after the business opens, inside the 24 h window and at least 2 h after the agent."""
+    negocio = (((state.get("lead") or {}).get("origem") or {}).get("negocio") or {})
+    hours = horario.parse_hours(negocio.get("horario_resumo")) or horario.FALLBACK
+    window_end = (last_lead or last_agent) + ATENDIMENTO_WINDOW_SECONDS
+    earliest = last_agent + MIN_SILENCE_SECONDS
+    next_day = datetime.fromtimestamp(last_lead or last_agent, BUSINESS_TZ).replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    opens = horario.open_intervals(next_day.timestamp(), window_end, hours, BUSINESS_TZ) or \
+        horario.open_intervals(next_day.timestamp(), window_end, horario.FALLBACK, BUSINESS_TZ)
+    target = min(opens[0][0] + 3600, opens[0][1]) if opens else window_end - 3600
+    return min(max(target, earliest), max(window_end - 600, earliest))
+
+
+async def objection_touch(conversation_id: int, state: dict[str, Any], records: dict[str, Any], now: float, local_state: dict[str, Any]) -> None:
+    last_agent = float(state.get("last_agent_ts") or local_state.get("last_agent_ts") or 0)
+    last_lead = float(state.get("last_lead_ts") or 0)
+    if not last_agent or last_lead > last_agent:
+        return  # the lead wrote after the objection: the conversation goes on, not this touch
+    anchor = last_agent
+    if decided(conversation_id, "objecao", anchor) or now < objection_touch_time(state, last_agent, last_lead):
+        return
+    transcript = await chatwoot_messages(conversation_id)
+    context = {
+        "stage": "objecao", "gatilho": "o lead disse que não faz sentido; descobrir o motivo real",
+        "objecao": records.get("objecao"), "oferta": records.get("oferta"),
+        "sequencia": {"lead_respondeu_durante": False, "toques_anteriores": previous_touches(conversation_id, anchor)},
+        "transcript": transcript, "lead": state.get("lead", {}), "state": state,
+    }
+    result = await ask_llm(prompt("fup.md") + "\nCONTEXTO:\n" + json.dumps(context, ensure_ascii=False)) or {"disparar": False, "motivo": "review_unavailable"}
+    disparar = bool(result.get("disparar") and result.get("texto"))
+    motivo, text = str(result.get("motivo", "")), str(result.get("texto") or "")[:500]
+    if disparar:
+        text, motivo, disparar = await review_touch(conversation_id, text, motivo, state, transcript)
+    record_decision(conversation_id, "objecao", anchor, now, disparar, motivo)
+    if disparar:
+        await bridge_post("/sdr/followups", {"conversation_id": conversation_id, "send_at": now, "text": text, "motivo": motivo, "after_ts": last_lead, "stage": "objecao"})
+        await crm.activity(conversation_id, f"⏱️ Toque de objeção agendado: {motivo}")
+    else:
+        await crm.activity(conversation_id, f"⏱️ Toque de objeção não enviado: {motivo}")
 
 
 async def review_touch(conversation_id: int, text: str, motivo: str, state: dict[str, Any], transcript: list[dict[str, Any]]) -> tuple[str, str, bool]:
