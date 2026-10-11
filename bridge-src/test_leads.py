@@ -261,7 +261,7 @@ class Only24hTests(unittest.TestCase):
         prospeccao.update("5548999990002", status="enviado")
         self.assertIsNone(prospeccao.next_queued(None, sunday_night))  # the daytime office never goes out under the filter
         prospeccao.kv_set("prospeccao_filtro", "")
-        monday = datetime(2026, 10, 13, 19, 0, tzinfo=sdr.BUSINESS_TZ)
+        monday = datetime(2026, 10, 19, 10, 0, tzinfo=sdr.BUSINESS_TZ)  # a Monday morning: the office is open
         self.assertEqual(prospeccao.next_queued(None, monday)[0], "5548999990001")  # filter off: back to normal
 
 if __name__ == "__main__":

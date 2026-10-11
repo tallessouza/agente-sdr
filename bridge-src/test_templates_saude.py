@@ -130,8 +130,14 @@ class TemplateDbTests(unittest.TestCase):
         with patch.object(th, "graph", new=graph):
             asyncio.run(th.ensure_retomadas(templates, meta))
         asked = [b["name"] for b in posted if b["category"] == "UTILITY"]
-        self.assertFalse(any(n.startswith("retomada_sem_resposta_u") for n in asked), asked)  # 3 turned MARKETING: gave up
+        # 3 turned MARKETING: one new wording a day for that family, not more ("esforçar ao máximo", Talles 11/10).
+        self.assertEqual(sum(n.startswith("retomada_sem_resposta_u") for n in asked), 1, asked)
         self.assertTrue(any(n.startswith("retomada_conversa_u") for n in asked), asked)       # other families still farmed
+        posted.clear()
+        meta["submetidos_retomada"] = {}
+        with patch.object(th, "graph", new=graph):
+            asyncio.run(th.ensure_retomadas(templates, meta))
+        self.assertFalse(any(b["name"].startswith("retomada_sem_resposta_u") for b in posted))  # already tried today
 
     def test_health_report_counts_sends_failures_and_replies(self):
         meta = th.load_meta()

@@ -139,7 +139,7 @@ class ProspeccaoTests(unittest.TestCase):
             {"numero": "5548999990012", "nome": "Abre domingo", "dias_abertos": [0, 1, 2, 3, 4, 5, 6]},
             {"numero": "5548999990013", "nome": "Sem horário"},
         ])
-        tuesday = datetime(2026, 10, 13, 19, 0, tzinfo=TZ)
+        tuesday = datetime(2026, 10, 13, 10, 0, tzinfo=TZ)
         saturday = datetime(2026, 10, 10, 10, 0, tzinfo=TZ)
         sunday = datetime(2026, 10, 11, 10, 0, tzinfo=TZ)
         holiday = datetime(2026, 10, 12, 10, 0, tzinfo=TZ)
@@ -154,11 +154,11 @@ class ProspeccaoTests(unittest.TestCase):
 
     def test_prospect_once_respects_switch_window_gap_and_sends(self):
         prospeccao.enqueue([{"numero": "5548999990004", "nome": "Locadora D"}])
-        tuesday_night = ts(2026, 10, 13, 19, 0)
+        tuesday_night = ts(2026, 10, 13, 10, 0)  # opening in the business's hours (Talles 11/10)
         with patch.object(prospeccao, "PROSPECT_ENABLED", False):
             self.assertEqual(asyncio.run(app.prospect_once(now=tuesday_night)), "desligada")
         with patch.object(prospeccao, "PROSPECT_ENABLED", True):
-            self.assertEqual(asyncio.run(app.prospect_once(now=ts(2026, 10, 13, 15, 0))), "fora_da_janela")
+            self.assertEqual(asyncio.run(app.prospect_once(now=ts(2026, 10, 13, 23, 0))), "fora_da_janela")
             check = {"IsInWhatsapp": True, "JID": "554899990004@s.whatsapp.net", "LID": "1234@lid", "VerifiedName": "Locadora D"}
             with patch.object(app, "check_whatsapp", AsyncMock(return_value=check)), \
                  patch.object(app, "ensure_conversation", AsyncMock(return_value=("src", 99))), \
@@ -216,7 +216,7 @@ class ProspeccaoTests(unittest.TestCase):
                 p.stop()
 
     def test_uncertain_send_is_never_retried(self):
-        night = ts(2026, 10, 13, 19, 0)
+        night = ts(2026, 10, 13, 10, 0)
         with patch.object(app, "WAAKG_URL", "http://dell:3000/api"), patch.object(app, "WAAKG_SESSION", "s"), patch.object(app, "WAAKG_API_KEY", "k"), \
              patch.object(app, "send_waakg", AsyncMock()) as waakg:
             result = self._run(self._send_env(httpx.ReadTimeout("timeout")), night)
@@ -228,7 +228,7 @@ class ProspeccaoTests(unittest.TestCase):
         self.assertEqual(self._run(self._send_env(None), night + 3600), "fila_vazia")
 
     def test_surely_not_sent_goes_back_to_the_queue_once(self):
-        night = ts(2026, 10, 13, 19, 0)
+        night = ts(2026, 10, 13, 10, 0)
         with patch.object(app, "WAAKG_URL", ""):
             result = self._run(self._send_env(httpx.ConnectError("refused")), night)
         self.assertEqual(result, "erro")
@@ -258,7 +258,7 @@ class ProspeccaoTests(unittest.TestCase):
         prospeccao.enqueue([{"numero": "554733330000"}])
         with patch.object(prospeccao, "PROSPECT_ENABLED", True), \
              patch.object(app, "check_whatsapp", AsyncMock(return_value={"IsInWhatsapp": False})):
-            self.assertEqual(asyncio.run(app.prospect_once(now=ts(2026, 10, 13, 19))), "sem_whatsapp")
+            self.assertEqual(asyncio.run(app.prospect_once(now=ts(2026, 10, 13, 10))), "sem_whatsapp")
         self.assertIsNone(prospeccao.next_queued())
 
     def test_stats(self):

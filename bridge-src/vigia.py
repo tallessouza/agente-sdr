@@ -180,13 +180,33 @@ def utility_slots(now: float | None = None) -> int:
     return sum(t.get("category") == "UTILITY" for t in template_health.retomada_pool())
 
 
+def queue_findings(now: float) -> list[dict[str, Any]]:
+    """Talles 11/10, when the queue ends: "pausar e te avisar" (and a warning two days before)."""
+    import prospeccao
+    if not prospeccao.enabled() or prospeccao.kv_get("prospeccao_pausada") == "1":
+        return []
+    with prospeccao.connect() as c:
+        left = c.execute("SELECT COUNT(*) FROM sdr_prospects WHERE status='fila'").fetchone()[0]
+        per_day = c.execute("SELECT COUNT(*) FROM sdr_prospects WHERE enviado_em > ?", (now - 86400,)).fetchone()[0]
+    dia = local(now).strftime("%Y-%m-%d")
+    if left == 0:
+        prospeccao.kv_set("prospeccao_pausada", "1")
+        prospeccao.kv_set("pausa_motivo", f"fila acabou ({dia})")
+        return [{"chave": f"fila_acabou:{dia}", "tipo": "fila", "conversation": None,
+                 "detalhe": "a fila de prospecção acabou e a prospecção foi pausada; para seguir, é preciso coletar negócios novos"}]
+    if per_day and left <= 2 * per_day:
+        return [{"chave": f"fila_fim:{dia}", "tipo": "fila", "conversation": None,
+                 "detalhe": f"a fila de prospecção acaba em cerca de {max(1, round(left / per_day))} dia(s): {left} negócios no ritmo de {per_day} por dia"}]
+    return []
+
+
 async def patrol(send_evolution: Any = None, now: float | None = None) -> int:
     """One round: compare, store, and tell Talles about the new problems (one message, at most hourly, 8h–21h)."""
     import alertas
     import prospeccao
     now = time.time() if now is None else now
     plan = await fetch_plan()
-    new = store(findings(plan, now, utility_slots(now)), now)
+    new = store(findings(plan, now, utility_slots(now)) + queue_findings(now), now)
     if new:
         logger.warning("Vigia: %d new problem(s): %s", len(new), "; ".join(f["detalhe"] for f in new[:5]))
     pending = [f for f in open_findings() if not alertas.delivered(f"vigia:{f['chave']}")]

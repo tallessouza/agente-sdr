@@ -467,7 +467,10 @@ RETOMADA_UTILITY_TARGET = int(os.getenv("RETOMADA_UTILITY_TARGET", "4"))
 RETOMADA_UTILITY_GIVE_UP = int(os.getenv("RETOMADA_UTILITY_GIVE_UP", "3"))  # utility asks Meta turned MARKETING before giving up
 RETOMADA_UTILITY_SKELETONS = {
     "sem_resposta": ["{abre}, {{{{1}}}}. {sou} {{{{2}}}} fiz um teste de atendimento no WhatsApp de vocês. {{{{3}}}} {fecha}",
-                     "{abre}, {{{{1}}}}. {sou} {{{{2}}}} mandei uma mensagem de teste para o atendimento de vocês. {{{{3}}}} {fecha}"],
+                     "{abre}, {{{{1}}}}. {sou} {{{{2}}}} mandei uma mensagem de teste para o atendimento de vocês. {{{{3}}}} {fecha}",
+                     # other wordings for the daily retry (the two above came back MARKETING on 11/10)
+                     "{abre}, {{{{1}}}}. {sou} Retorno sobre a mensagem enviada {{{{2}}}} para o WhatsApp de vocês: {{{{3}}}}. {fecha}",
+                     "{abre}, {{{{1}}}}. {sou} Segue o resultado do teste de tempo de resposta feito {{{{2}}}} no WhatsApp de vocês: {{{{3}}}}. {fecha}"],
     "conversa": ["{abre}, {{{{1}}}}. {volta} Sobre o que você comentou, que {{{{2}}}}: {{{{3}}}}. {fecha}",
                  "{abre}, {{{{1}}}}. {volta} Você tinha comentado que {{{{2}}}}. {{{{3}}}} {fecha}"],
     "robo": ["{abre}, {{{{1}}}}. {sou} {{{{2}}}} a resposta automática de vocês chegou e a conversa parou ali. {{{{3}}}} {fecha}",
@@ -544,13 +547,15 @@ async def ensure_retomadas(templates: list[dict[str, Any]], meta: dict[str, Any]
         need = min(max(0, RETOMADA_UTILITY_TARGET - len(healthy_u)), left)
         recategorized = sum(1 for t in templates if familia_of(t.get("name", "")) == familia and is_utility_variant(t.get("name", ""))
                             and t.get("status") == "APPROVED" and t.get("category") == "MARKETING")
+        tried = meta.setdefault("utility_insistencia", {})
         if recategorized >= RETOMADA_UTILITY_GIVE_UP:
-            # 11/10: Meta approved all 4 "sem_resposta" utility asks as MARKETING (nobody asked for that message). Asking
-            # again only piles up recategorizations, which Meta treats as repeat offence: stop asking for this family.
-            need = 0
+            # 11/10: Meta approved the 4 "sem_resposta" utility asks as MARKETING (nobody asked for that message). Talles:
+            # "esforçar ao máximo" for utility: keep trying, but one new wording a day, not a pile of recategorizations.
+            need = 0 if tried.get(f"{today}:{familia}") else min(need, 1)
         for v in new_retomada_variants(familia, need, templates, meta, utility=True):
             if await submit_retomada(v["name"], familia, v["text"], v["example"], meta, "UTILITY"):
                 submitted.append(v["name"])
+                tried[f"{today}:{familia}"] = 1
                 left -= 1
         healthy = [t for t in templates if familia_of(t.get("name", "")) == familia and not is_utility_variant(t.get("name", ""))
                    and (t.get("status") == "PENDING" or (t.get("status") == "APPROVED" and health(t) not in {"RED", "YELLOW"}))]

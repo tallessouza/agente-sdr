@@ -35,6 +35,82 @@ PARAM_MAX = 300
 SEQUENCE_QUIET = int(os.getenv("RETOMADA_SEQUENCE_QUIET_SECONDS", str(4 * 86400)))
 
 
+# Talles 11/10: whoever got the opening and did not answer gets 3 more touches by template (retomadas) inside 24 h of
+# it: 6 h apart, 2 h when 6 h falls outside the business's hours, only while it is open (9h–20h at most).
+SLOTS = 3
+IDEAL_GAP, MIN_GAP = 6 * 3600, 2 * 3600
+SEND_HOURS = (9.0, 20.0)
+DEFAULT_HOURS = {d: [(9.0, 18.0)] for d in range(5)}  # no hours on file: weekdays 9h–18h
+
+
+def business_hours(numero: str) -> dict[int, list[tuple[float, float]]]:
+    out: dict[int, list[tuple[float, float]]] = {}
+    for h in leads.horarios(numero):
+        if h["fechado"]:
+            out.setdefault(int(h["dia"]), [])
+        elif h["aberto_24h"]:
+            out.setdefault(int(h["dia"]), []).append((0.0, 24.0))
+        elif h.get("abre") and h.get("fecha"):
+            a = int(h["abre"][:2]) + int(h["abre"][3:5]) / 60
+            b = int(h["fecha"][:2]) + int(h["fecha"][3:5]) / 60
+            out.setdefault(int(h["dia"]), []).append((a, b if b > a else 24.0))
+    return out or DEFAULT_HOURS
+
+
+def open_spans(numero: str, start: float, end: float) -> list[tuple[float, float]]:
+    hours = business_hours(numero)
+    spans = []
+    day = datetime.fromtimestamp(start, sdr.BUSINESS_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    while day.timestamp() < end:
+        if day.strftime("%Y-%m-%d") not in prospeccao.PROSPECT_SKIP_DATES:
+            for a, b in hours.get(day.weekday(), []):
+                a, b = max(a, SEND_HOURS[0]), min(b, SEND_HOURS[1])
+                if b > a:
+                    spans.append((day.timestamp() + a * 3600, day.timestamp() + b * 3600))
+        day = datetime.fromtimestamp(day.timestamp() + 26 * 3600, sdr.BUSINESS_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    return [(max(a, start), min(b, end)) for a, b in spans if b > start and a < end]
+
+
+def _first_open(t: float, end: float, spans: list[tuple[float, float]]) -> float | None:
+    return next((max(a, t) for a, b in spans if b > t and max(a, t) <= end), None)
+
+
+def _fits(t: float, end: float, spans: list[tuple[float, float]], n: int) -> bool:
+    for _ in range(n):
+        t = _first_open(t + MIN_GAP, end, spans)
+        if t is None:
+            return False
+    return True
+
+
+def slot_times(numero: str, opened: float) -> list[float]:
+    """When the 3 retomadas after the opening go: inside 24 h of it, each as close to 6 h after the previous one as
+    still lets the rest fit, never under 2 h, only in the business's open hours. What does not fit in 24 h goes at the
+    next openings after it (the touches matter more than the 24 h, Talles 10/10)."""
+    for end in (opened + 24 * 3600, opened + 7 * 86400):
+        spans = open_spans(numero, opened, end)
+        out, previous = [], opened
+        for left in range(SLOTS, 0, -1):
+            chosen = None
+            # 6 h while it is open; closer (down to 2 h) while it is still open; else the next opening.
+            for gap in range(IDEAL_GAP, MIN_GAP - 1, -1800):
+                t = previous + gap
+                if t <= end and any(a <= t < b for a, b in spans) and _fits(t, end, spans, left - 1):
+                    chosen = t
+                    break
+            if chosen is None:
+                first = _first_open(previous + MIN_GAP, end, spans)
+                if first is not None and _fits(first, end, spans, left - 1):
+                    chosen = first
+            if chosen is None:
+                break
+            out.append(chosen)
+            previous = chosen
+        if len(out) == SLOTS:
+            return out
+    return out
+
+
 def connect() -> sqlite3.Connection:
     c = sdr.connect()
     c.execute("CREATE TABLE IF NOT EXISTS sdr_retomadas (id INTEGER PRIMARY KEY, conversation INTEGER NOT NULL, familia TEXT NOT NULL, "
@@ -71,6 +147,18 @@ def eligible(row: dict[str, Any], now: float) -> str | None:
     family = family_of(row, records, last_lead)
     if family not in RETOMADA_FAMILIES:
         return None
+    if family == "sem_resposta":
+        # The 3 touches after the opening, at slot_times (Talles 11/10), not one a working day.
+        past = history(int(conversation))
+        if any(r["status"] in {"pendente", "enviando"} for r in past):
+            return None
+        sent = [r for r in past if r["status"] == "enviada"]
+        slots = slot_times(str(row.get("numero") or ""), float(row.get("enviado_em") or now))
+        if len(sent) >= min(SLOTS, len(slots)) or now < slots[len(sent)]:
+            return None
+        if sent and now - float(sent[-1]["enviado_em"] or 0) < MIN_GAP:
+            return None
+        return family
     today = datetime.fromtimestamp(now, sdr.BUSINESS_TZ)
     holidays = set(((sdr.offers().get("atendimento") or {}).get("feriados")) or [])
     if today.weekday() >= 5 or today.strftime("%Y-%m-%d") in holidays:

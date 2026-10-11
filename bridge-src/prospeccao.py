@@ -30,7 +30,7 @@ PROSPECT_TEST_TEXTS = [t.strip() for t in os.getenv(
 ).split("|") if t.strip()]
 # "dias@HH:MM-HH:MM" separated by commas; days 0=segunda .. 6=domingo and 7=feriado, ranges allowed.
 # On Saturday only businesses open on Saturday get the test; on Sunday and holidays, only those open on Sunday.
-PROSPECT_WINDOWS = os.getenv("PROSPECT_WINDOWS", "0-4@18:30-21:00,5@09:30-12:30,6@10:00-13:00,7@10:00-13:00")
+PROSPECT_WINDOWS = os.getenv("PROSPECT_WINDOWS", "0-6@08:00-22:00,7@08:00-22:00")  # the business's own hours decide inside it
 # Follow-up only for whoever answered (Talles, 09/10): the silent ones get no pitch. Kept as a switch.
 PROSPECT_PITCH_SILENT = os.getenv("PROSPECT_PITCH_SILENT", "0") == "1"
 # Only an automatic greeting and then silence: one differential message the next business morning (Talles, 09/10).
@@ -43,6 +43,7 @@ PROSPECT_MAX_GAP = int(os.getenv("PROSPECT_MAX_GAP_SECONDS", "240"))
 PROSPECT_PITCH_WINDOW = os.getenv("PROSPECT_PITCH_WINDOW", "09:30-12:00")
 PROSPECT_LABEL = os.getenv("PROSPECT_LABEL", "prospeccao")
 # National holidays: no test and no follow-up on these dates (YYYY-MM-DD, comma separated).
+OPEN_MARGIN_MINUTES = int(os.getenv("PROSPECT_OPEN_MARGIN_MINUTES", "60"))  # an opening only with this much open time left
 PROSPECT_SKIP_DATES = {d.strip() for d in os.getenv("PROSPECT_SKIP_DATES", "2026-10-12,2026-11-02,2026-11-15,2026-11-20,2026-12-25,2027-01-01").split(",") if d.strip()}
 OFFER = "atendimento"
 # What the agent may know about the business (from the Maps list and the site enrichment). The data itself lives
@@ -193,14 +194,20 @@ def next_queued(numero: str | None = None, local: datetime | None = None) -> tup
             weekday = (local or datetime.now(sdr.BUSINESS_TZ)).weekday()
             row = c.execute("SELECT p.numero FROM sdr_prospects p WHERE p.status='fila' AND EXISTS (SELECT 1 FROM lead_horarios h "
                             "WHERE h.numero=p.numero AND h.dia=? AND h.aberto_24h=1) ORDER BY p.enfileirado LIMIT 1", (weekday,)).fetchone()
+        elif local is None:
+            row = c.execute("SELECT numero FROM sdr_prospects WHERE status='fila' ORDER BY enfileirado LIMIT 1").fetchone()
         else:
-            day = None if local is None else day_key(local)
-            if day is None or day <= 4:
-                row = c.execute("SELECT numero FROM sdr_prospects WHERE status='fila' ORDER BY enfileirado LIMIT 1").fetchone()
-            else:  # Saturday: open on Saturday; Sunday or holiday: open on Sunday
-                row = c.execute("SELECT p.numero FROM sdr_prospects p WHERE p.status='fila' AND EXISTS (SELECT 1 FROM lead_horarios h "
-                                "WHERE h.numero=p.numero AND h.dia=? AND h.fechado=0) ORDER BY p.enfileirado LIMIT 1",
-                                (5 if day == 5 else 6,)).fetchone()
+            # Talles 11/10: "abertura durante o horário de negócio": only a business open now, with time left to answer.
+            # A holiday counts as Sunday; a day known open without hours, and a business without any, count 9h–18h.
+            weekday = 6 if local.strftime("%Y-%m-%d") in PROSPECT_SKIP_DATES else local.weekday()
+            now_hm = local.strftime("%H:%M")
+            later_hm = (local + timedelta(minutes=OPEN_MARGIN_MINUTES)).strftime("%H:%M") if local.hour < 23 else "23:59"
+            row = c.execute("SELECT p.numero FROM sdr_prospects p WHERE p.status='fila' AND ("
+                            " EXISTS (SELECT 1 FROM lead_horarios h WHERE h.numero=p.numero AND h.dia=? AND h.fechado=0"
+                            "  AND (h.aberto_24h=1 OR (COALESCE(h.abre, '09:00') <= ? AND COALESCE(h.fecha, '18:00') >= ?)))"
+                            " OR (NOT EXISTS (SELECT 1 FROM lead_horarios h WHERE h.numero=p.numero) AND ? <= 4 AND ? >= '09:00' AND ? <= '18:00'))"
+                            " ORDER BY p.enfileirado LIMIT 1",
+                            (weekday, now_hm, later_hm, weekday, now_hm, later_hm)).fetchone()
         return (row[0], leads.lead(row[0], c) or {}) if row else None
 
 
