@@ -738,29 +738,37 @@ async def followup_once(now: float | None = None) -> None:
 
 
 def objection_touch_time(state: dict[str, Any], last_agent: float, last_lead: float) -> float:
-    """The next day, one hour after the business opens, inside the 24 h window and at least 2 h after the agent."""
+    """The learning touch after an objection (Talles 11/10: "na terça, tentando entender pra melhorar o processo"): the
+    next working day (Monday to Friday, not a holiday), in the business's hours, spread over the morning."""
     negocio = (((state.get("lead") or {}).get("origem") or {}).get("negocio") or {})
-    hours = horario.parse_hours(negocio.get("horario_resumo")) or horario.FALLBACK
-    window_end = (last_lead or last_agent) + ATENDIMENTO_WINDOW_SECONDS
-    earliest = last_agent + MIN_SILENCE_SECONDS
-    next_day = datetime.fromtimestamp(last_lead or last_agent, BUSINESS_TZ).replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-    opens = horario.open_intervals(next_day.timestamp(), window_end, hours, BUSINESS_TZ) or \
-        horario.open_intervals(next_day.timestamp(), window_end, horario.FALLBACK, BUSINESS_TZ)
-    target = min(opens[0][0] + 3600, opens[0][1]) if opens else window_end - 3600
-    return min(max(target, earliest), max(window_end - 600, earliest))
+    hours = horario.parse_hours(negocio.get("horario_resumo"))
+    holidays = set((((state.get("context") or {}).get("ofertas") or {}).get("atendimento") or {}).get("feriados") or [])
+    seed = zlib.crc32(str(state.get("jid") or "").encode()) or None
+    times = horario.cadence_times(max(last_lead, last_agent), hours, BUSINESS_TZ, holidays, n=1, seed=seed)
+    return max(times[0] if times else last_agent + 86400, last_agent + MIN_SILENCE_SECONDS)
 
 
 async def objection_touch(conversation_id: int, state: dict[str, Any], records: dict[str, Any], now: float, local_state: dict[str, Any]) -> None:
     last_agent = float(state.get("last_agent_ts") or local_state.get("last_agent_ts") or 0)
     last_lead = float(state.get("last_lead_ts") or 0)
-    if not last_agent or last_lead > last_agent:
-        return  # the lead wrote after the objection: the conversation goes on, not this touch
-    anchor = last_agent
+    if not last_agent or (last_lead > last_agent and now - last_lead < 12 * 3600):
+        return  # the lead wrote after the objection and it is fresh: the conversation goes on, not this touch
+    # The lead's farewell can be the last word (#121, 11/10: "Desejo sucesso"): after 12 h it still gets the learning touch.
+    anchor = last_agent if last_agent >= last_lead else last_lead
     if decided(conversation_id, "objecao", anchor) or now < objection_touch_time(state, last_agent, last_lead):
+        return
+    if now - last_lead > ATENDIMENTO_WINDOW_SECONDS:
+        # Window closed (the usual case: the next working day): the learning touch goes as a utility retomada template,
+        # layer "aprendizado" (retomada.md).
+        outcome = await template_touch(conversation_id, records, "objecao", last_lead, now)
+        if outcome is None:
+            return  # no approved template yet: try again on the next pass
+        record_decision(conversation_id, "objecao", anchor, now, outcome == "agendada", f"template (aprendizado): {outcome}")
+        await crm.activity(conversation_id, f"⏱️ Toque de aprendizado por template: {outcome}")
         return
     transcript = await chatwoot_messages(conversation_id)
     context = {
-        "stage": "objecao", "gatilho": "o lead disse que não faz sentido; descobrir o motivo real",
+        "stage": "objecao", "gatilho": "o lead recusou (e talvez criticou a abordagem): toque de aprendizado, perguntar sobre cada ponto que ele citou",
         "objecao": records.get("objecao"), "oferta": records.get("oferta"),
         "sequencia": {"lead_respondeu_durante": False, "toques_anteriores": previous_touches(conversation_id, anchor)},
         "transcript": transcript, "lead": state.get("lead", {}), "state": state,
@@ -838,7 +846,7 @@ def render_retomada(text: str, values: list[str]) -> str:
     return text
 
 
-STAGE_LAYER = {"2h": "tempo", "d1": "fit", "d3": "dinheiro", "d6": "adiamento",
+STAGE_LAYER = {"objecao": "aprendizado", "2h": "tempo", "d1": "fit", "d3": "dinheiro", "d6": "adiamento",
                # the daily cadence goes to the next layers of the onion: other people, then the honest last call
                "c1": "autoridade", "c2": "fit", "c3": "adiamento"}
 # A template touch whose time passed more than this ago (no approved template until then) is dropped, not sent late.

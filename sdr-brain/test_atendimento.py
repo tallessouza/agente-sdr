@@ -91,22 +91,24 @@ class AtendimentoSequenceTests(unittest.TestCase):
         # No opening in the next days at all: daytime hours.
         self.assertEqual(len(horario.touch_times(anchor, 0, {d: [] for d in range(7)}, tz)), 4)
 
-    def test_objection_touch_is_the_next_morning_inside_the_window(self):
+    def test_learning_touch_is_the_next_working_day(self):
+        # Talles 11/10: after the objection, "na terça, tentando entender pra melhorar o processo": the next working
+        # day (not the weekend, not the holiday), in the business's hours, never right after the farewell.
         import app
         from datetime import datetime
         from zoneinfo import ZoneInfo
         tz = ZoneInfo("America/Sao_Paulo")
         ts = lambda *a: datetime(*a, tzinfo=tz).timestamp()
-        # Conversation 122: "não faz sentido" Saturday 20:12; business open daily 8h-18h -> Sunday 9h.
-        state = {"lead": {"origem": {"negocio": {"horario_resumo": "seg a dom 8h–18h"}}}}
-        when = app.objection_touch_time(state, ts(2026, 10, 10, 20, 13), ts(2026, 10, 10, 20, 12))
-        self.assertEqual(datetime.fromtimestamp(when, tz).strftime("%d %H:%M"), "11 09:00")
-        # Closed on Sunday: daytime fallback, still inside the 23 h window.
-        closed = {"lead": {"origem": {"negocio": {"horario_resumo": "seg a sex 8h–18h, sáb 8h–12h, dom fechado"}}}}
-        when = app.objection_touch_time(closed, ts(2026, 10, 10, 20, 13), ts(2026, 10, 10, 20, 12))
-        local = datetime.fromtimestamp(when, tz)
-        self.assertEqual(local.day, 11); self.assertTrue(9 <= local.hour < 20)
-        self.assertLessEqual(when, ts(2026, 10, 10, 20, 12) + app.ATENDIMENTO_WINDOW_SECONDS)
+        feriado = {"context": {"ofertas": {"atendimento": {"feriados": ["2026-10-12"]}}}}
+        state = {"lead": {"origem": {"negocio": {"horario_resumo": "todos os dias 7h–23h30"}}}, **feriado}
+        # #121: refused Sunday 13:41 -> Tuesday (Monday is the holiday), in the morning.
+        when = datetime.fromtimestamp(app.objection_touch_time(state, ts(2026, 10, 11, 13, 41), ts(2026, 10, 11, 13, 42)), tz)
+        self.assertEqual(when.strftime("%a %d"), "Tue 13")
+        self.assertTrue(8 <= when.hour < 13, when)
+        # #122: Saturday night -> Tuesday too, never on Sunday.
+        when = datetime.fromtimestamp(app.objection_touch_time(state, ts(2026, 10, 10, 20, 13), ts(2026, 10, 10, 20, 12)), tz)
+        self.assertEqual(when.strftime("%a %d"), "Tue 13")
+        self.assertEqual(app.STAGE_LAYER["objecao"], "aprendizado")
 
     def test_touches_go_in_order_and_stop_when_the_window_closes(self):
         import app
