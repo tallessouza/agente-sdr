@@ -134,7 +134,15 @@ def _windows(spec: str) -> list[tuple[set[int], int, int]]:
     return windows
 
 
+def only_24h() -> bool:
+    """Runtime filter (kv prospeccao_filtro = 24h): the queue picks only businesses open 24 h on that weekday, at any
+    hour (Talles, 11/10/2026: test the 47 that say they answer around the clock, tonight). Off: kv deleted or empty."""
+    return kv_get("prospeccao_filtro") == "24h"
+
+
 def in_window(local: datetime, spec: str | None = None) -> bool:
+    if spec is None and only_24h():
+        return True  # those businesses say they are open at any hour: that is exactly what the test measures
     minute = local.hour * 60 + local.minute
     day = day_key(local)
     return any(day in days and start <= minute < end for days, start, end in _windows(spec or PROSPECT_WINDOWS))
@@ -181,6 +189,10 @@ def next_queued(numero: str | None = None, local: datetime | None = None) -> tup
     with connect() as c:
         if numero:
             row = c.execute("SELECT numero FROM sdr_prospects WHERE numero=? AND status='fila'", (numero,)).fetchone()
+        elif only_24h():
+            weekday = (local or datetime.now(sdr.BUSINESS_TZ)).weekday()
+            row = c.execute("SELECT p.numero FROM sdr_prospects p WHERE p.status='fila' AND EXISTS (SELECT 1 FROM lead_horarios h "
+                            "WHERE h.numero=p.numero AND h.dia=? AND h.aberto_24h=1) ORDER BY p.enfileirado LIMIT 1", (weekday,)).fetchone()
         else:
             day = None if local is None else day_key(local)
             if day is None or day <= 4:

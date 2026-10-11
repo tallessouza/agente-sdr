@@ -234,5 +234,35 @@ class LeadsTests(unittest.TestCase):
         self.assertEqual(leads.instagram_user("https://www.instagram.com/Foo_Bar/?hl=pt"), "foo_bar")
 
 
+
+class Only24hTests(unittest.TestCase):
+    """Talles, 11/10: test the businesses that say they are open 24 h, at any hour, and only them."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        db = Path(self.tmp.name) / "bridge.db"
+        self.patches = [patch.object(sdr, "DB_PATH", db), patch.object(handover, "DB_PATH", db), patch.object(app, "DB_PATH", db)]
+        for p in self.patches:
+            p.start()
+        prospeccao.enqueue([{"telefone_e164": "+5548999990001", "nome": "Escritório Dia", "horario": "segunda-feira: 08:00 to 18:00; domingo: Fechado"},
+                            {"telefone_e164": "+5548999990002", "nome": "Advocacia 24h", "horario": "; ".join(f"{d}: Atendimento 24 horas" for d in ("segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"))}])
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+        self.tmp.cleanup()
+
+    def test_filter_picks_only_24h_at_any_hour(self):
+        from datetime import datetime
+        sunday_night = datetime(2026, 10, 11, 2, 0, tzinfo=sdr.BUSINESS_TZ)
+        self.assertFalse(prospeccao.in_window(sunday_night))
+        prospeccao.kv_set("prospeccao_filtro", "24h")
+        self.assertTrue(prospeccao.in_window(sunday_night))
+        self.assertEqual(prospeccao.next_queued(None, sunday_night)[0], "5548999990002")
+        prospeccao.update("5548999990002", status="enviado")
+        self.assertIsNone(prospeccao.next_queued(None, sunday_night))  # the daytime office never goes out under the filter
+        prospeccao.kv_set("prospeccao_filtro", "")
+        monday = datetime(2026, 10, 13, 19, 0, tzinfo=sdr.BUSINESS_TZ)
+        self.assertEqual(prospeccao.next_queued(None, monday)[0], "5548999990001")  # filter off: back to normal
+
 if __name__ == "__main__":
     unittest.main()
