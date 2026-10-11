@@ -31,7 +31,10 @@ def load(path: Path) -> Any:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--dados", required=True, help="pasta com os JSON da coleta")
+    parser.add_argument("--dados", help="pasta com os JSON da coleta")
+    parser.add_argument("--stdin", action="store_true",
+                        help="o conteúdo chega pela entrada padrão: {\"arquivos\": {\"negocios-enriquecidos.json\": [...], ...}} "
+                             "(as etapas de coleta gravam direto no banco, sem pasta; o dado novo vence, como --preferir-arquivos)")
     parser.add_argument("--classificacao", help="funil-classificado.json")
     parser.add_argument("--db", help="banco (padrão: BRIDGE_DB ou /data/bridge.db)")
     parser.add_argument("--preferir-arquivos", action="store_true",
@@ -45,7 +48,13 @@ def main(argv: list[str] | None = None) -> int:
         sdr.DB_PATH = Path(args.db)
     import leads
 
-    folder = Path(args.dados)
+    if not args.dados and not args.stdin:
+        parser.error("use --dados PASTA ou --stdin")
+    inline: dict[str, Any] | None = None
+    if args.stdin:
+        inline = (json.load(sys.stdin) or {}).get("arquivos") or {}
+        args.preferir_arquivos = True  # what a collection step sends now is newer than the bank
+    folder = Path(args.dados or ".")
     now = time.time()
     report: dict[str, dict[str, int]] = {}
     skipped: list[str] = []
@@ -56,6 +65,11 @@ def main(argv: list[str] | None = None) -> int:
         counts["alterados"] += int(bool(changed))
 
     def read(name: str) -> tuple[Any, float | None]:
+        if inline is not None:
+            if name not in inline:
+                skipped.append(name)
+                return None, None
+            return inline[name], now
         path = folder / name
         if not path.exists():
             skipped.append(name)
@@ -137,17 +151,23 @@ def main(argv: list[str] | None = None) -> int:
             raw_sources.append(("instagram", user, perfil, linked[0] if linked else None, perfis_at))
             tally("lead_instagram", leads.save_instagram(perfil, c=c, coletado_em=perfis_at, now=now))
         # Funnel reports (one line per conversation, plus a "resumo" line kept only as audit).
-        for path in sorted(folder.glob("funil-*.jsonl")):
-            day = re.sub(r"^funil-", "", path.stem)
-            for line in path.read_text(encoding="utf-8").splitlines():
+        reports = ([(name, str(content), now) for name, content in sorted(inline.items()) if re.match(r"^funil-.*\.jsonl$", name)]
+                   if inline is not None else [(p.name, p.read_text(encoding="utf-8"), p.stat().st_mtime) for p in sorted(folder.glob("funil-*.jsonl"))])
+        for name, text, stamp in reports:
+            day = re.sub(r"^funil-", "", Path(name).stem)
+            for line in text.splitlines():
                 if not line.strip():
                     continue
                 item = json.loads(line)
                 if "resumo" in item:
-                    raw_sources.append(("funil-relatorio", f"{day}:resumo", item["resumo"], None, path.stat().st_mtime))
+                    raw_sources.append(("funil-relatorio", f"{day}:resumo", item["resumo"], None, stamp))
                     continue
-                raw_sources.append(("funil-relatorio", f"{day}:{item.get('conversa')}", item, None, path.stat().st_mtime))
+                raw_sources.append(("funil-relatorio", f"{day}:{item.get('conversa')}", item, None, stamp))
                 tally("funil_relatorio", leads.save_relatorio(day, item, c=c))
+        if inline is not None and isinstance(inline.get("funil-classificado.json"), list):
+            for item in inline["funil-classificado.json"]:
+                raw_sources.append(("funil-classificado", str(item.get("conversation")), item, None, now))
+                tally("funil_classificacao", leads.save_classificacao(item, fonte="funil-classificado", c=c, now=now))
         if args.classificacao:
             path = Path(args.classificacao)
             if path.exists():

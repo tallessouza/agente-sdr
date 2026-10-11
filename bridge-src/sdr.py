@@ -322,12 +322,68 @@ def capacity() -> dict[str, Any]:
 
 
 def offers() -> dict[str, Any]:
-    """Offer facts as edited by the owner; a missing or broken file reads as unknown."""
+    """Offer facts as edited by the owner; a missing or broken file reads as unknown. The busy times are data, not
+    configuration: they come from the database (busy_times), never from the file."""
     try:
         data = json.loads(OFFERS_FILE.read_text(encoding="utf-8"))
-        return {key: data[key] for key in OFFERS if isinstance(data.get(key), dict)} or {"status": "desconhecido"}
+        out = {key: data[key] for key in OFFERS if isinstance(data.get(key), dict)} or {"status": "desconhecido"}
     except (OSError, ValueError, AttributeError):
         return {"status": "desconhecido"}
+    if isinstance(out.get("atendimento"), dict):
+        try:
+            busy = busy_times()
+        except sqlite3.Error:
+            busy = []
+        out["atendimento"] = {**out["atendimento"], "horarios_ocupados": busy, "regra_horarios_ocupados": BUSY_RULE}
+    return out
+
+
+# Busy times (Talles, 10/10: "salvar a info de horários marcados"; 11/10: "nada dependa de JSON"): the 20-minute
+# calls the agent booked (live from sdr_records) plus the owner's own commitments (table agenda_ocupada).
+BUSY_RULE = ("Nunca ofereça nem confirme um horário de horarios_ocupados (cada call dura 20 min e precisa de 40 min livres "
+             "antes e depois). Ofereça outro dia útil ou outra hora.")
+
+
+def agenda_connect() -> sqlite3.Connection:
+    c = connect()
+    c.execute("CREATE TABLE IF NOT EXISTS agenda_ocupada (quando TEXT PRIMARY KEY, o_que TEXT NOT NULL, fonte TEXT NOT NULL DEFAULT 'manual', criado REAL NOT NULL)")
+    return c
+
+
+def add_busy(quando: str, o_que: str, fonte: str = "manual") -> None:
+    """quando: AAAA-MM-DDTHH:MM, local time."""
+    datetime.strptime(quando, "%Y-%m-%dT%H:%M")
+    with agenda_connect() as c:
+        c.execute("INSERT INTO agenda_ocupada(quando,o_que,fonte,criado) VALUES (?,?,?,?) ON CONFLICT(quando) DO UPDATE SET o_que=excluded.o_que, fonte=excluded.fonte",
+                  (quando, o_que, fonte, time.time()))
+
+
+def remove_busy(quando: str) -> int:
+    with agenda_connect() as c:
+        return c.execute("DELETE FROM agenda_ocupada WHERE quando=?", (quando,)).rowcount
+
+
+def busy_times(now: float | None = None) -> list[dict[str, str]]:
+    """Every busy slot from 30 min ago on, oldest first: booked calls and manual commitments."""
+    limit = datetime.fromtimestamp((time.time() if now is None else now) - 1800, BUSINESS_TZ).strftime("%Y-%m-%dT%H:%M")
+    items: dict[str, str] = {}
+    with agenda_connect() as c:
+        rows: dict[int, dict[str, str]] = {}
+        for conv, field, value in c.execute("SELECT conversation, field, value FROM sdr_records ORDER BY created"):
+            rows.setdefault(conv, {})[field] = value
+        has_prospects = c.execute("SELECT 1 FROM sqlite_master WHERE name='sdr_prospects'").fetchone()
+        has_leads = c.execute("SELECT 1 FROM sqlite_master WHERE name='leads'").fetchone()
+        for conv, rec in rows.items():
+            when = str(rec.get("proximo_passo_em") or "")[:16]
+            if "20 min" in (rec.get("proximo_passo") or "") and "T" in when and not rec.get("desfecho") and when >= limit:
+                name = None
+                if has_prospects and has_leads:
+                    found = c.execute("SELECT l.nome FROM sdr_prospects p JOIN leads l ON l.numero=p.numero WHERE p.conversation=?", (conv,)).fetchone()
+                    name = found[0] if found else None
+                items[when] = f"call com {name or 'lead'} (conversa {conv})"
+        for quando, o_que in c.execute("SELECT quando, o_que FROM agenda_ocupada WHERE quando >= ?", (limit,)):
+            items.setdefault(quando, o_que)
+    return [{"quando": k, "o_que": v} for k, v in sorted(items.items())]
 
 
 def offer_from_text(text: str) -> str | None:
