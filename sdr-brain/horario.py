@@ -104,6 +104,14 @@ def touch_times(anchor: float, window_end: float, hours: dict[int, list[tuple[fl
     """n touch moments: each 6 h after the previous one, 2 h after when the 6 h mark falls outside the business's
     hours, at the next opening when that is closed too. `window_end` no longer limits the plan: what falls inside
     the window goes as text, what falls after it goes as a template (Talles 11/10, see touch_channel)."""
+    # Talles 11/10: "fazer os 4 dentro das 24 horas" by text, 6 h apart, 2 h when needed, respecting the business's
+    # hours; when the business is closed for the rest of the window (Sunday, holiday) the general 9h–20h still holds 4.
+    inside = window_end - END_MARGIN
+    for spec in ([hours] if hours else []) + [FALLBACK]:
+        spans = open_intervals(anchor, inside, _clip(spec), tz, holidays if spec is hours else ())
+        plan = _fit(anchor, inside, spans, n, ideal_gap)
+        if len(plan) >= n:
+            return plan
     horizon = anchor + HORIZON
     for spec in ([hours] if hours else []) + [FALLBACK]:
         spans = open_intervals(anchor, horizon, _clip(spec), tz, holidays)
@@ -144,6 +152,28 @@ def cadence_times(after: float, hours: dict[int, list[tuple[float, float]]] | No
 def touch_channel(when: float, window_end: float) -> str:
     """'texto' when the touch falls inside the 24 h window (minus the margin), 'template' after it."""
     return "texto" if when <= window_end - END_MARGIN else "template"
+
+
+def _fit(anchor: float, end: float, spans: list[tuple[float, float]], n: int, ideal_gap: float) -> list[float]:
+    """n moments in the open spans before `end`, each as close to ideal_gap after the previous one as still lets the
+    rest fit (never under MIN_GAP); fewer than n when they do not fit at all."""
+    plan: list[float] = []
+    previous = anchor
+    for left in range(n, 0, -1):
+        chosen = None
+        for gap in range(int(ideal_gap), int(MIN_GAP) - 1, -1800):
+            first = _plan(previous + gap - MIN_GAP, end, spans, 1, MIN_GAP)  # the first open moment from previous + gap
+            if not first or first[0] > end:
+                continue
+            rest = _plan(first[0], end, spans, left - 1, MIN_GAP) if left > 1 else []
+            if len(rest) == left - 1:
+                chosen = first[0]
+                break
+        if chosen is None:
+            return plan
+        plan.append(chosen)
+        previous = chosen
+    return plan
 
 
 def _plan(anchor: float, horizon: float, spans: list[tuple[float, float]], n: int, ideal_gap: float) -> list[float]:

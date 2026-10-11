@@ -76,18 +76,18 @@ class AtendimentoSequenceTests(unittest.TestCase):
         hours = {d: [(0.0, 24.0)] for d in range(7)}
         anchor = ts(2026, 10, 13, 9, 0)
         times = horario.touch_times(anchor, anchor + 23.5 * 3600, hours, tz)
-        # 15h (6 h); 21h is past 20h -> 17h; 23h -> 19h; 1h and 21h closed -> next opening 9h.
-        self.assertEqual(fmt(times), ["Tue 15:00", "Tue 17:00", "Tue 19:00", "Wed 09:00"])
-        self.assertEqual([horario.touch_channel(t, anchor + 23.5 * 3600) for t in times], ["texto", "texto", "texto", "template"])
+        # The 4 go inside the window (Talles 11/10): 6 h would leave the 4th for tomorrow, after the window, so the gaps shrink.
+        self.assertEqual(fmt(times), ["Tue 13:30", "Tue 15:30", "Tue 17:30", "Tue 19:30"])
+        self.assertEqual([horario.touch_channel(t, anchor + 23.5 * 3600) for t in times], ["texto"] * 4)
         office = horario.parse_hours("seg a sex 8h–18h, sáb e dom fechado")
         times = horario.touch_times(ts(2026, 10, 13, 9, 5), 0, office, tz)
         self.assertEqual(fmt(times), ["Tue 15:05", "Tue 17:05", "Wed 09:00", "Wed 15:00"])
-        # Saturday night reply, closed on Sunday: the business's own hours, on Monday, all by template.
+        # Saturday night reply, closed on Sunday: the 4 still go by text inside the window, on Sunday 9h–20h (Talles 11/10).
         shop = horario.parse_hours("seg a sex 8h–18h, sáb 8h–12h, dom fechado")
         anchor = ts(2026, 10, 10, 20, 25)
         times = horario.touch_times(anchor, anchor + 23.5 * 3600, shop, tz)
-        self.assertEqual(fmt(times), ["Mon 09:00", "Mon 15:00", "Mon 17:00", "Tue 09:00"])
-        self.assertEqual({horario.touch_channel(t, anchor + 23.5 * 3600) for t in times}, {"template"})
+        self.assertEqual(fmt(times), ["Sun 09:00", "Sun 15:00", "Sun 17:30", "Sun 19:30"])
+        self.assertEqual({horario.touch_channel(t, anchor + 23.5 * 3600) for t in times}, {"texto"})
         # No opening in the next days at all: daytime hours.
         self.assertEqual(len(horario.touch_times(anchor, 0, {d: [] for d in range(7)}, tz)), 4)
 
@@ -149,7 +149,7 @@ class TouchSpacingTests(unittest.TestCase):
         tz = ZoneInfo("America/Sao_Paulo")
         anchor = datetime(2026, 10, 10, 18, 54, tzinfo=tz).timestamp()
         times = horario.touch_times(anchor, anchor + 23.5 * 3600, horario.parse_hours("seg a sáb 8h–20h, dom fechado"), tz)
-        self.assertEqual([datetime.fromtimestamp(t, tz).strftime("%a %H:%M") for t in times], ["Mon 09:00", "Mon 15:00", "Mon 17:00", "Mon 19:00"])
+        self.assertEqual([datetime.fromtimestamp(t, tz).strftime("%a %H:%M") for t in times], ["Sun 09:00", "Sun 14:00", "Sun 16:00", "Sun 18:00"])  # inside her window (Talles 11/10)
         self.assertTrue(all(b - a >= horario.MIN_GAP - 1 for a, b in zip([anchor] + times, times)))
 
     def test_six_hours_unless_the_six_hour_mark_is_closed(self):
@@ -265,6 +265,40 @@ class CadenceTests(unittest.TestCase):
         self.assertTrue(all(b > a for a, b in zip(times, times[1:])))
         self.assertTrue(all(datetime.fromtimestamp(t, tz).weekday() < 5 for t in times[4:]))
         self.assertEqual([app.STAGE_LAYER[s] for s in ("c1", "c2", "c3")], ["autoridade", "fit", "adiamento"])
+
+
+class FourInsideTheWindowTests(unittest.TestCase):
+    def test_closed_sunday_still_gets_four_texts_inside_the_window(self):
+        # Talles 11/10: whoever answered gets the 4 touches by text inside the 24 h window, 6 h apart, 2 h when needed;
+        # the business closed on Sunday does not push them to Tuesday templates.
+        import horario
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("America/Sao_Paulo")
+        office = horario.parse_hours("seg a sex 8h–18h, sáb 8h–12h, dom fechado")
+        lead = datetime(2026, 10, 10, 18, 30, tzinfo=tz).timestamp()
+        anchor = lead + 60
+        window_end = lead + 23 * 3600 + 30 * 60
+        times = horario.touch_times(anchor, window_end, office, tz, holidays={"2026-10-12"})
+        fmt = [datetime.fromtimestamp(x, tz).strftime("%a %H:%M") for x in times]
+        self.assertEqual(len(times), 4)
+        self.assertTrue(all(horario.touch_channel(x, window_end) == "texto" for x in times), fmt)
+        self.assertTrue(all(b - a >= 2 * 3600 for a, b in zip(times, times[1:])), fmt)
+        self.assertEqual(fmt[0], "Sun 09:00")
+
+    def test_open_business_keeps_six_hours_apart(self):
+        import horario
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("America/Sao_Paulo")
+        office = horario.parse_hours("seg a sex 8h–18h, sáb e dom fechado")
+        lead = datetime(2026, 10, 13, 8, 0, tzinfo=tz).timestamp()  # Tuesday morning
+        times = horario.touch_times(lead + 60, lead + 23.5 * 3600, office, tz)
+        fmt = [datetime.fromtimestamp(x, tz).strftime("%a %H:%M") for x in times]
+        self.assertEqual(len(times), 4, fmt)
+        self.assertTrue(all(b - a >= 2 * 3600 for a, b in zip(times, times[1:])), fmt)
+        self.assertTrue(all(8 <= datetime.fromtimestamp(x, tz).hour < 18 for x in times), fmt)  # inside the business hours
+        self.assertTrue(all(horario.touch_channel(x, lead + 23.5 * 3600) == "texto" for x in times), fmt)
 
 if __name__ == "__main__":
     unittest.main()
