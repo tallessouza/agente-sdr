@@ -86,6 +86,14 @@ class RobotTouchTests(unittest.TestCase):
         with sdr.connect() as c:
             self.assertEqual([r[0] for r in c.execute("SELECT status FROM sdr_followups WHERE id IN (?,?) ORDER BY id", (first, second))], ["sent", "sent"])
 
+    def test_same_touch_asked_twice_is_queued_once(self):
+        now = time.time()
+        first = sdr.add_followup(77, now, "Toque", "t", after_ts=now - 3600, stage="2h")
+        self.assertEqual(sdr.add_followup(77, now + 5, "Toque de novo", "t", after_ts=now - 3600, stage="2h"), first)
+        self.assertNotEqual(sdr.add_followup(77, now, "Outro estágio", "t", after_ts=now - 3600, stage="d1"), first)
+        with sdr.connect() as c:
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM sdr_followups WHERE conversation=77").fetchone()[0], 2)
+
     def test_robot_echo_does_not_reach_the_agent(self):
         self.robot()
         now = time.time()

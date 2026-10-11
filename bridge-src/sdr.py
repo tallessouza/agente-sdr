@@ -426,8 +426,23 @@ def set_profile(conversation: int, profile: dict[str, Any]) -> None:
     with connect() as c: c.execute("INSERT INTO sdr_profiles VALUES (?,?,?) ON CONFLICT(conversation) DO UPDATE SET profile=excluded.profile,updated=excluded.updated", (conversation, json.dumps(profile, ensure_ascii=False), time.time()))
 
 def add_followup(conversation: int, send_at: float, text: str, motivo: str = "", after_ts: float = 0, stage: str = "") -> int:
-    with connect() as c:
-        cur = c.execute("INSERT INTO sdr_followups(conversation,send_at,text,motivo,after_ts,stage) VALUES (?,?,?,?,?,?)", (conversation,send_at,text,motivo,after_ts,stage)); return int(cur.lastrowid)
+    """Idempotent per (conversation, stage, after_ts): the same touch asked again (a retry of the brain's POST)
+    returns the touch already queued or sent instead of creating a second one."""
+    c = connect()
+    try:
+        c.commit()
+        c.execute("BEGIN IMMEDIATE")
+        if stage:
+            row = c.execute("SELECT id FROM sdr_followups WHERE conversation=? AND stage=? AND ABS(after_ts-?)<1 AND status IN ('pending','sending','sent')",
+                            (conversation, stage, after_ts)).fetchone()
+            if row:
+                c.commit()
+                return int(row[0])
+        cur = c.execute("INSERT INTO sdr_followups(conversation,send_at,text,motivo,after_ts,stage) VALUES (?,?,?,?,?,?)", (conversation,send_at,text,motivo,after_ts,stage))
+        c.commit()
+        return int(cur.lastrowid)
+    finally:
+        c.close()
 
 def cancel_followups(conversation: int, reason: str = "cancelado") -> int:
     with connect() as c:
