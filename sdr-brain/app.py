@@ -44,6 +44,8 @@ POST_PRICE_STAGE = ("d4", 345600)
 # The names keep the order of the objections in fup.md (tempo, fit, valor, adiamento); WHEN they go out comes
 # from horario.touch_times: 4 touches inside the 24 h window, 6 h apart in the business's open hours, closer
 # when closed hours eat the window (Talles, 10/10). The delays below are only the nominal spacing.
+# The touch decisions carry the whole transcript: the model behind combo/sdr-brain took over 12 s on 11/10.
+FUP_LLM_TIMEOUT = float(os.getenv("SDR_FUP_LLM_TIMEOUT", "45"))
 ATENDIMENTO_STAGES = [("2h", 6 * 3600), ("d1", 12 * 3600), ("d3", 18 * 3600), ("d6", 24 * 3600),
                       # then the daily cadence on the following working days, by template (Talles 11/10)
                       ("c1", 48 * 3600), ("c2", 72 * 3600), ("c3", 96 * 3600)]
@@ -574,7 +576,10 @@ async def deadline_touch(conversation_id: int, state: dict[str, Any], step: dict
         "sequencia": {"lead_respondeu_durante": False, "toques_anteriores": previous_touches(conversation_id, due)},
         "transcript": transcript, "lead": state.get("lead", {}), "state": state,
     }
-    result = await ask_llm(prompt("fup.md") + "\nCONTEXTO:\n" + json.dumps(context, ensure_ascii=False)) or {"disparar": False, "motivo": "review_unavailable"}
+    result = await ask_llm(prompt("fup.md") + "\nCONTEXTO:\n" + json.dumps(context, ensure_ascii=False), timeout=FUP_LLM_TIMEOUT)
+    if result is None:
+        LOGGER.warning("Deadline touch postponed conversation=%s: LLM unavailable", conversation_id)
+        return
     disparar = bool(result.get("disparar") and result.get("texto"))
     motivo, text = str(result.get("motivo", "")), str(result.get("texto") or "")[:500]
     if disparar:
@@ -710,7 +715,11 @@ async def followup_once(now: float | None = None) -> None:
             "robo": is_robot(records),
             "transcript": transcript, "lead": state.get("lead", {}), "state": state,
         }
-        result = await ask_llm(prompt("fup.md") + "\nCONTEXTO:\n" + json.dumps(context, ensure_ascii=False)) or {"disparar": False, "motivo": "review_unavailable"}
+        result = await ask_llm(prompt("fup.md") + "\nCONTEXTO:\n" + json.dumps(context, ensure_ascii=False), timeout=FUP_LLM_TIMEOUT)
+        if result is None:
+            # 11/10: a timeout used to become "decided, not sent" and the touch was lost; now the stage waits for the next pass.
+            LOGGER.warning("FUP decision postponed conversation=%s stage=%s: LLM unavailable", conversation_id, stage)
+            continue
         disparar = bool(result.get("disparar") and result.get("texto"))
         motivo = str(result.get("motivo", ""))
         text = str(result.get("texto") or "")[:500]
@@ -754,7 +763,10 @@ async def objection_touch(conversation_id: int, state: dict[str, Any], records: 
         "sequencia": {"lead_respondeu_durante": False, "toques_anteriores": previous_touches(conversation_id, anchor)},
         "transcript": transcript, "lead": state.get("lead", {}), "state": state,
     }
-    result = await ask_llm(prompt("fup.md") + "\nCONTEXTO:\n" + json.dumps(context, ensure_ascii=False)) or {"disparar": False, "motivo": "review_unavailable"}
+    result = await ask_llm(prompt("fup.md") + "\nCONTEXTO:\n" + json.dumps(context, ensure_ascii=False), timeout=FUP_LLM_TIMEOUT)
+    if result is None:
+        LOGGER.warning("Objection touch postponed conversation=%s: LLM unavailable", conversation_id)
+        return
     disparar = bool(result.get("disparar") and result.get("texto"))
     motivo, text = str(result.get("motivo", "")), str(result.get("texto") or "")[:500]
     if disparar:
