@@ -209,5 +209,38 @@ class TouchSpacingTests(unittest.TestCase):
         self.assertFalse(app.touch_too_soon(4243, 50_000.0 + 60))
 
 
+class RetomadaPlanTests(unittest.TestCase):
+    def test_when_label_and_sentence_case(self):
+        import app
+        from datetime import datetime
+        tz = app.BUSINESS_TZ
+        sent = datetime(2026, 10, 10, 19, 40, tzinfo=tz).timestamp()
+        self.assertEqual(app.when_label(sent, datetime(2026, 10, 11, 10, 0, tzinfo=tz).timestamp()), "ontem às 19h40")
+        self.assertEqual(app.when_label(sent, datetime(2026, 10, 13, 10, 0, tzinfo=tz).timestamp()), "no sábado às 19h40")
+        self.assertEqual(app.when_label(datetime(2026, 10, 13, 9, 0, tzinfo=tz).timestamp(), datetime(2026, 10, 13, 15, 0, tzinfo=tz).timestamp()), "hoje às 9h")
+        t1 = "Oi, {{1}}! Aqui é o agente do Talles, uma inteligência artificial. {{2}} mandei uma mensagem"
+        t2 = "Olá, {{1}}! Sou o agente do Talles, uma IA. Testei o WhatsApp de vocês {{2}} e a mensagem"
+        self.assertEqual(app.fit_case("ontem às 19h40", t1, 2), "Ontem às 19h40")
+        self.assertEqual(app.fit_case("ontem às 19h40", t2, 2), "ontem às 19h40")
+        self.assertEqual(app.short_name("Clínica Odontológica Rident - Centro | Florianópolis"), "Clínica Odontológica Rident")
+
+    def test_retomada_goes_in_the_business_hours(self):
+        import app
+        from datetime import datetime
+        tz = app.BUSINESS_TZ
+        sunday_night = datetime(2026, 10, 11, 21, 0, tzinfo=tz).timestamp()
+        start, until = app.retomada_window({"horario_resumo": "seg a sex 8h–18h, sáb 8h–12h, dom fechado"}, sunday_night)
+        self.assertEqual(datetime.fromtimestamp(start, tz).strftime("%a %H:%M"), "Mon 09:30")  # sending starts at 9h, +30 min
+        self.assertEqual(datetime.fromtimestamp(until, tz).strftime("%H:%M"), "17:45")
+        monday_ten = datetime(2026, 10, 12, 10, 0, tzinfo=tz).timestamp()
+        start, _ = app.retomada_window({"horario_resumo": "seg a sex 8h–18h"}, monday_ten)
+        self.assertEqual(start, monday_ten)  # open now: right away
+
+    def test_rendered_retomada_has_no_open_slot(self):
+        import app
+        text = app.render_retomada("Oi, {{1}}! {{2}} mandei. {{3}} Topa?", ["pessoal da X", "Ontem às 19h", "Quem chama fecha com quem responde."])
+        self.assertEqual(text, "Oi, pessoal da X! Ontem às 19h mandei. Quem chama fecha com quem responde. Topa?")
+
+
 if __name__ == "__main__":
     unittest.main()

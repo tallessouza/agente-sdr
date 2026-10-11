@@ -14,6 +14,7 @@ import fila
 import handover
 import monitor
 import prospeccao
+import retomada
 import template_health
 import random
 import sdr
@@ -1468,6 +1469,11 @@ async def prospect_once(now: float | None = None, numero: str | None = None) -> 
         if not prospeccao.enabled(): return "desligada"
         if not prospeccao.in_window(local): return "fora_da_janela"
         if now < float(prospeccao.kv_get("proximo_envio") or 0): return "intervalo"
+    if not numero and PROSPECT_CHANNEL == "cloud" and cloud.enabled():
+        sent = await send_due_retomada(now)
+        if sent:
+            prospeccao.kv_set("proximo_envio", str(now + prospeccao.next_gap()))
+            return sent
     if prospeccao.sent_today(now) >= prospeccao.daily_cap(now): return "teto_do_dia"
     item = prospeccao.next_queued(numero, None if numero else local)
     if not item: return "fila_vazia"
@@ -1590,6 +1596,46 @@ async def prospect_cloud(number: str, data: dict[str, Any], now: float) -> str:
         logger.exception("Prospect Chatwoot bookkeeping failed conversation=%s", conversation_id)
     logger.info("Prospect sent number=%s conversation=%s channel=cloud", number, conversation_id)
     return "enviado"
+
+
+async def send_due_retomada(now: float) -> str | None:
+    """A due retomada goes out only in the MARKETING slot of the day's 80/20 ("conta no 80/20", Talles 10/10)."""
+    row = retomada.due(now)
+    if not row:
+        return None
+    day = datetime_local(now).strftime("%Y-%m-%d")
+    utility_sent = int(prospeccao.kv_get(f"tpl:{day}:UTILITY") or 0)
+    marketing_sent = int(prospeccao.kv_get(f"tpl:{day}:MARKETING") or 0)
+    if not template_health.marketing_slot(cloud.approved_templates(), utility_sent, marketing_sent):
+        return None
+    conversation = int(row["conversation"])
+    try:
+        if await handover.paused(conversation):
+            retomada.mark(row["id"], "cancelada", "conversa pausada")
+            return None
+    except Exception:
+        return None
+    rendered = retomada.render(row)
+    if not rendered:
+        retomada.mark(row["id"], "cancelada", "template não aprovado")
+        return None
+    text, template = rendered
+    retomada.mark(row["id"], "enviando")  # claimed: never sent twice, even if the send fails
+    try:
+        await cloud.post_message(conversation, text, template=template, attributes={"bridge_retomada": row["id"]})
+    except Exception as exc:
+        logger.exception("Retomada send failed conversation=%s", conversation)
+        retomada.mark(row["id"], "falhou", str(exc))
+        return "erro"
+    retomada.mark(row["id"], "enviada")
+    prospeccao.kv_set(f"tpl:{day}:MARKETING", str(marketing_sent + 1))
+    handover.record(conversation, f"retomada:{row['id']}", "retomada_enviada", text)
+    try:
+        await sdr.private_note(conversation, f"🔁 Retomada ({row['familia']}, template {template['name']}): {row.get('motivo') or ''}")
+    except Exception:
+        logger.exception("Retomada note failed conversation=%s", conversation)
+    logger.info("Retomada sent conversation=%s template=%s", conversation, template["name"])
+    return "retomada"
 
 
 def datetime_local(ts: float):
@@ -1891,6 +1937,23 @@ async def sdr_followup(request: Request):
     if (e:=_sdr_auth(request)): return e
     p=await request.json(); fid=sdr.add_followup(int(p["conversation_id"]),float(p["send_at"]),str(p["text"]),str(p.get("motivo", "")),float(p.get("after_ts",0)),str(p.get("stage", ""))); return {"id":fid}
 
+@app.get("/sdr/retomada/candidatos")
+async def sdr_retomada_candidates(request: Request):
+    """Who may get a retomada template now (window closed), with the approved template the brain fills."""
+    if (e:=_sdr_auth(request)): return e
+    return {"candidatos": retomada.candidates()}
+
+@app.post("/sdr/retomadas")
+async def sdr_retomada_schedule(request: Request):
+    if (e:=_sdr_auth(request)): return e
+    p = await request.json()
+    try:
+        rid = retomada.schedule(int(p["conversation_id"]), str(p["familia"]), str(p["template"]), list(p["params"]), float(p["send_at"]),
+                                float(p["send_until"]), str(p.get("motivo", "")))
+    except (KeyError, ValueError) as exc:
+        return JSONResponse({"detail": str(exc)}, 422)
+    return {"id": rid}
+
 @app.delete("/sdr/followups/{conversation_id}")
 async def sdr_followup_delete(conversation_id: int, request: Request):
     if (e:=_sdr_auth(request)): return e
@@ -2108,6 +2171,8 @@ async def cloud_inbox_event(payload: dict[str, Any]) -> None:
     conn = db(); row = conn.execute("SELECT jid, source_id FROM contacts WHERE conversation_id=?", (conversation_id,)).fetchone(); conn.close()
     if event == "message_updated":
         # A first contact Meta refused (no WhatsApp, blocked): mark the business instead of waiting for a reply.
+        if str(payload.get("status") or "") == "failed" and attributes.get("bridge_retomada"):
+            retomada.mark(int(attributes["bridge_retomada"]), "falhou", str(attributes.get("external_error") or "falha na entrega"))
         if str(payload.get("status") or "") == "failed" and row and attributes.get("bridge_agent"):
             current = prospeccao.for_jid(row[0])
             if current and current.get("status") in {"enviado", "enviando"} and not current.get("respondeu_em"):

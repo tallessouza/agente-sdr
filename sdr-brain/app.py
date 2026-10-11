@@ -763,6 +763,134 @@ async def review_touch(conversation_id: int, text: str, motivo: str, state: dict
     return text, motivo, True
 
 
+# --- retomadas: templates after the 24 h window (Talles, 10/10) ---------------------------------------------------
+RETOMADA_PER_PASS = int(os.getenv("SDR_RETOMADA_PER_PASS", "10"))
+WEEKDAY_ON = ["na segunda", "na terça", "na quarta", "na quinta", "na sexta", "no sábado", "no domingo"]
+
+
+def when_label(ts: float, now: float) -> str:
+    """'hoje às 19h40', 'ontem às 9h', 'no sábado às 19h40' (local time)."""
+    local, today = datetime.fromtimestamp(ts, BUSINESS_TZ), datetime.fromtimestamp(now, BUSINESS_TZ)
+    hour = f"{local.hour}h{local.minute:02d}" if local.minute else f"{local.hour}h"
+    days = (today.date() - local.date()).days
+    day = "hoje" if days == 0 else "ontem" if days == 1 else WEEKDAY_ON[local.weekday()]
+    return f"{day} às {hour}"
+
+
+def fit_case(value: str, template_text: str, slot: int) -> str:
+    """Capitalize a value that opens a sentence in the template ('{{2}} mandei…' after a period)."""
+    before = template_text.split("{{%d}}" % slot, 1)[0].rstrip()
+    return value[:1].upper() + value[1:] if not before or before[-1] in ".!?" else value
+
+
+def short_name(nome: str) -> str:
+    name = re.split(r"\s[-–|]\s|\|", str(nome or ""))[0].strip()
+    words = name.split()
+    return " ".join(words[:5]) if words else "vocês"
+
+
+def retomada_window(negocio: dict[str, Any], now: float) -> tuple[float, float] | None:
+    """The next stretch of the business's open hours (9h–20h at most) in the next 3 days: (send_at, send_until)."""
+    hours = horario.parse_hours(negocio.get("horario_resumo")) or horario.FALLBACK
+    for spans in (horario.open_intervals(now, now + 3 * 86400, horario._clip(hours), BUSINESS_TZ),
+                  horario.open_intervals(now, now + 3 * 86400, horario.FALLBACK, BUSINESS_TZ)):
+        for a, b in spans:
+            start = max(a, now) if a <= now else a + 1800  # half an hour after it opens, or right away if open
+            if b - start >= 1800:
+                return start, b - 900
+    return None
+
+
+def render_retomada(text: str, values: list[str]) -> str:
+    for index, value in enumerate(values, start=1):
+        text = text.replace("{{%d}}" % index, value)
+    return text
+
+
+async def plan_retomada(candidate: dict[str, Any], now: float) -> str:
+    cid = int(candidate["conversation_id"])
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.get(f"{BRIDGE_URL}/sdr/conversations/{cid}", headers={"Authorization": f"Bearer {os.getenv('SDR_BRAIN_TOKEN', '')}"})
+    if response.status_code != 200:
+        return "sem estado"
+    state = response.json()
+    if state.get("paused"):
+        return "pausada"
+    negocio = candidate.get("negocio") or {}
+    window = retomada_window(negocio, now)
+    if not window:
+        return "sem horário de funcionamento nos próximos 3 dias"
+    template = candidate["template"]
+    tested = float(candidate.get("teste_enviado_em") or now)
+    records = (state.get("lead") or {}).get("registros") or {}
+    context = {
+        "familia": candidate["familia"], "template": template, "negocio": negocio,
+        "p1_sugerido": f"pessoal da {short_name(negocio.get('nome'))}",
+        "p2_sugerido": fit_case(when_label(tested, window[0]), template["text"], 2) if candidate["familia"] != "conversa" else None,
+        "registros": records, "transcript": await chatwoot_messages(cid),
+        "toques_anteriores": [{"estagio": s, "motivo": m} for s, m in previous_touch_motives(cid)],
+        "retomadas_anteriores": candidate.get("retomadas_anteriores") or [],
+    }
+    result = await ask_llm(prompt("retomada.md") + "\nCONTEXTO:\n" + json.dumps(context, ensure_ascii=False)) or {}
+    if not result.get("disparar"):
+        return "não disparar: " + str(result.get("motivo") or "sem resposta do modelo")[:200]
+    values = [" ".join(str(result.get(k) or "").split()) for k in ("p1", "p2", "p3")]
+    if candidate["familia"] != "conversa" and context["p2_sugerido"]:
+        values[1] = context["p2_sugerido"]
+    values[0] = fit_case(values[0], template["text"], 1)
+    text = render_retomada(template["text"], values)
+    if not all(values) or "{{" in text:
+        return "lacuna vazia"
+    verdict = await run_review({"conversation_id": cid, "tipo": "retomada", "lead_message": "", "draft_parts": [text], "directives": [],
+                                "context": state.get("context") or {"lead": state.get("lead", {})}, "transcript": context["transcript"]})
+    if verdict.get("decision") != "aprovar":
+        return f"revisor: {verdict.get('decision')} {verdict.get('motivo', '')}"[:200]
+    motivo = f"{result.get('camada', '')}: {result.get('motivo', '')}"[:400]
+    await bridge_post("/sdr/retomadas", {"conversation_id": cid, "familia": candidate["familia"], "template": template["name"], "params": values,
+                                         "send_at": window[0], "send_until": window[1], "motivo": motivo})
+    await crm.activity(cid, f"🔁 Retomada agendada ({candidate['familia']}, camada {result.get('camada', '?')}) para "
+                            f"{datetime.fromtimestamp(window[0], BUSINESS_TZ):%d/%m %H:%M}")
+    return "agendada"
+
+
+def previous_touch_motives(conversation_id: int) -> list[tuple[str, str]]:
+    with closing(connection()) as conn:
+        return [(r[0], r[1]) for r in conn.execute("SELECT stage, motivo FROM decisions WHERE conversation_id=? AND disparar=1 ORDER BY ts", (conversation_id,))]
+
+
+async def retomada_once(now: float | None = None) -> None:
+    current = now or time.time()
+    if not in_business_hours(current):
+        return
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.get(f"{BRIDGE_URL}/sdr/retomada/candidatos", headers={"Authorization": f"Bearer {os.getenv('SDR_BRAIN_TOKEN', '')}"})
+            response.raise_for_status()
+            candidates = response.json().get("candidatos") or []
+    except Exception as exc:
+        LOGGER.warning("Retomada candidates failed: %s", exc)
+        return
+    for candidate in candidates[:RETOMADA_PER_PASS]:
+        try:
+            outcome = await plan_retomada(candidate, current)
+        except Exception:
+            LOGGER.exception("Retomada planning failed conversation=%s", candidate.get("conversation_id"))
+            continue
+        LOGGER.warning("Retomada conversation=%s familia=%s -> %s", candidate.get("conversation_id"), candidate.get("familia"), outcome)
+        save_event({"conversation_id": candidate.get("conversation_id"), "familia": candidate.get("familia"), "resultado": outcome}, "retomada")
+
+
+async def retomada_loop() -> None:
+    while True:
+        try:
+            await retomada_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            LOGGER.exception("Retomada iteration failed")
+        await asyncio.sleep(600)
+
+
 async def followup_loop() -> None:
     while True:
         try:
@@ -779,12 +907,14 @@ async def lifespan(_: FastAPI):
     global cron_task
     load_tracked()
     cron_task = asyncio.create_task(followup_loop())
+    retomada_task = asyncio.create_task(retomada_loop())
     try:
         yield
     finally:
-        if cron_task:
-            cron_task.cancel()
-            await asyncio.gather(cron_task, return_exceptions=True)
+        for task in (cron_task, retomada_task):
+            if task:
+                task.cancel()
+        await asyncio.gather(*(t for t in (cron_task, retomada_task) if t), return_exceptions=True)
 
 
 app = FastAPI(title="sdr-brain", lifespan=lifespan)

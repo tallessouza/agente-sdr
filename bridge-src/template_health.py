@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import random
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -59,10 +60,33 @@ EXAMPLE = {"saudacao_min": "bom dia", "pergunta_teste": "Consigo falar com algu�
            "frase_teste": "Vocês atendem por aqui? Queria tirar uma dúvida"}
 
 
-def scheme_text(scheme: str, rng: random.Random) -> tuple[str, list[str]]:
+def phrase_weights(templates: list[dict[str, Any]]) -> dict[str, dict[str, float]]:
+    """Mean of Beta(utility+1, other+1) per opening, question and closing of the "vencedor" texts Meta decided:
+    the phrases that passed as utility get drawn more ("siga os vencedores", Talles 10/10)."""
+    counts: dict[str, dict[str, list[int]]] = {"abertura": {}, "pergunta": {}, "fecho": {}}
+    for t in templates:
+        if not str(t.get("name", "")).startswith("vencedor") or t.get("status") not in {"APPROVED", "REJECTED"}:
+            continue
+        m = re.match(r"^(\w+), \{\{1\}\}! (.+)\? (.+)$", body_of(t))
+        if not m:
+            continue
+        good = t.get("status") == "APPROVED" and t.get("category") == "UTILITY"
+        for kind, phrase in zip(("abertura", "pergunta", "fecho"), m.groups()):
+            c = counts[kind].setdefault(phrase, [0, 0])
+            c[0 if good else 1] += 1
+    return {kind: {p: (u + 1) / (u + o + 2) for p, (u, o) in phrases.items()} for kind, phrases in counts.items()}
+
+
+def weighted(rng: random.Random, options: list[str], weights: dict[str, float]) -> str:
+    return rng.choices(options, weights=[weights.get(o, 0.5) for o in options])[0]
+
+
+def scheme_text(scheme: str, rng: random.Random, weights: dict[str, dict[str, float]] | None = None) -> tuple[str, list[str]]:
     """(template body, variables in order). Never a variable at the very start or end (Meta refuses it)."""
-    if scheme == "vencedor":    # small mutation of the one that passed as utility
-        return f"{rng.choice(OPEN)}, {{{{1}}}}! {rng.choice(QUESTIONS)}? {rng.choice(CLOSINGS)}", ["saudacao_min"]
+    if scheme == "vencedor":    # small mutation of the ones that passed as utility, phrases weighted by their score
+        w = weights or {}
+        return (f"{weighted(rng, OPEN, w.get('abertura', {}))}, {{{{1}}}}! {weighted(rng, QUESTIONS, w.get('pergunta', {}))}? "
+                f"{weighted(rng, CLOSINGS, w.get('fecho', {}))}", ["saudacao_min"])
     if scheme == "pergunta_var":  # more of the text inside variables
         return f"{rng.choice(OPEN)}, {{{{1}}}}! {{{{2}}}}? {rng.choice(CLOSINGS)}", ["saudacao_min", "pergunta_teste"]
     if scheme == "abertura_var":
@@ -75,6 +99,12 @@ def scheme_text(scheme: str, rng: random.Random) -> tuple[str, list[str]]:
 # "isca" (approve a neutral text, edit it later) is the tactic Meta is most likely to punish: off unless asked for.
 BAIT_ENABLED = os.getenv("TEMPLATE_BAIT_ENABLED", "0") == "1"
 SCHEMES = ["vencedor", "pergunta_var", "abertura_var", "frase_var"] + (["isca"] if BAIT_ENABLED else [])
+# Schemes the generator still submits. Until 10/10 the variable-heavy ones went 0 utility out of 109 decided, and
+# Meta warns that "businesses consistently misclassifying marketing templates as utility may face warnings… rate
+# limits and utility template restrictions": only the winner's variations now (Talles: "frear o gerador").
+ACTIVE_SCHEMES = [s for s in os.getenv("TEMPLATE_SCHEMES", "vencedor").split(",") if s in SCHEMES]
+# At most this many new first-contact templates per local day.
+DAILY_MAX = int(os.getenv("TEMPLATE_DAILY_MAX", "10"))
 PHONE_ID = os.getenv("WA_CLOUD_PHONE_ID", "")
 # Number states that stop the queue before Meta restricts the account.
 BAD_QUALITY = {"RED", "LOW"}
@@ -121,14 +151,17 @@ def new_variants(templates: list[dict[str, Any]], meta: dict[str, Any], count: i
     names = {t.get("name", "") for t in templates} | set(meta["templates"])
     out: list[dict[str, Any]] = []
     attempts = 0
+    active = ACTIVE_SCHEMES or ["vencedor"]
+    all_weights = dict(zip(SCHEMES, scheme_weights(meta)))
+    phrases = phrase_weights(templates)
     while len(out) < count and attempts < count * 50:
         attempts += 1
-        scheme = rng.choices(SCHEMES, weights=scheme_weights(meta))[0]
+        scheme = rng.choices(active, weights=[all_weights[s] for s in active])[0]
         if scheme == "isca":
-            target, params = scheme_text("vencedor", rng)
+            target, params = scheme_text("vencedor", rng, phrases)
             text = f"{rng.choice(OPEN)}, {{{{1}}}}! {rng.choice(BAITS)}"
         else:
-            target, (text, params) = None, scheme_text(scheme, rng)
+            target, (text, params) = None, scheme_text(scheme, rng, phrases)
         if text in texts or (target and target in texts):
             continue
         number = 1
@@ -195,7 +228,7 @@ def build_pool(templates: list[dict[str, Any]], meta: dict[str, Any]) -> list[di
     for t in templates:
         params = params_for(t.get("name", ""), meta)
         text = body_of(t)
-        if params is None or t.get("status") != "APPROVED" or t.get("category") not in {"UTILITY", "MARKETING"} or not text or not usable(t, meta):
+        if params is None or is_retomada(t.get("name", "")) or t.get("status") != "APPROVED" or t.get("category") not in {"UTILITY", "MARKETING"} or not text or not usable(t, meta):
             continue
         if health(t) == "RED":
             continue  # recipients are blocking or reporting it: never sent again
@@ -233,7 +266,7 @@ async def trim_marketing(templates: list[dict[str, Any]], meta: dict[str, Any]) 
     pool = build_pool(templates, meta)
     utility = sum(t["category"] == "UTILITY" for t in pool)
     marketing = [t for t in templates if t.get("status") in {"APPROVED", "PENDING"} and t.get("category") == "MARKETING"
-                 and params_for(t.get("name", ""), meta) is not None]
+                 and params_for(t.get("name", ""), meta) is not None and not is_retomada(t.get("name", ""))]
     allowed = int(utility * MARKETING_KEEP_SHARE / (1 - MARKETING_KEEP_SHARE)) if MARKETING_KEEP_SHARE < 1 else len(marketing)
     # Healthiest approved first; pending (no health yet) and RED ones are always among the deleted.
     keepable = sorted([t for t in marketing if t.get("status") == "APPROVED" and health(t) != "RED"],
@@ -318,18 +351,96 @@ async def check_once(sync_chatwoot: Any = None) -> dict[str, Any]:
     pool = build_pool(templates, meta)
     POOL_FILE.write_text(json.dumps(pool, ensure_ascii=False, indent=1), encoding="utf-8")
     utility = sum(t["category"] == "UTILITY" for t in pool)
-    pending = sum(1 for t in templates if t.get("status") == "PENDING" and params_for(t.get("name", ""), meta) is not None)
+    pending = sum(1 for t in templates if t.get("status") == "PENDING" and params_for(t.get("name", ""), meta) is not None and not is_retomada(t.get("name", "")))
     submitted: list[str] = []
-    if utility < UTILITY_TARGET and pending < BATCH:
-        submitted = await submit(new_variants(templates, meta, BATCH), meta)
+    count = new_batch_size(utility, pending, meta)
+    if count:
+        submitted = await submit(new_variants(templates, meta, count), meta)
+        today = time.strftime("%Y-%m-%d", time.gmtime(time.time() - 3 * 3600))
+        meta.setdefault("submetidos", {})[today] = meta.get("submetidos", {}).get(today, 0) + len(submitted)
+    retomadas = await ensure_retomadas(templates, meta)
     save_meta(meta)
     if sync_chatwoot:
         await sync_chatwoot()
     report = {"quando": time.time(), "numero": numero, "utility_aprovados": utility, "marketing_aprovados": sum(t["category"] == "MARKETING" for t in pool),
-              "pendentes": pending, "enviados_para_aprovacao": len(submitted), "iscas_editadas": edited, "marketing_apagados": deleted,
+              "pendentes": pending, "enviados_para_aprovacao": len(submitted), "retomadas_enviadas_para_aprovacao": retomadas,
+              "retomadas_aprovadas": len(retomada_pool()), "iscas_editadas": edited, "marketing_apagados": deleted,
               "placar": meta["placar"]}
     logger.warning("Template health: %s", json.dumps(report, ensure_ascii=False))
     return report
+
+
+def new_batch_size(utility: int, pending: int, meta: dict[str, Any], now: float | None = None) -> int:
+    """How many first-contact templates to submit now: only up to the utility target (counting the pending ones),
+    at most DAILY_MAX per local day (Brasília, UTC-3)."""
+    today = time.strftime("%Y-%m-%d", time.gmtime((time.time() if now is None else now) - 3 * 3600))
+    left_today = DAILY_MAX - int(meta.get("submetidos", {}).get(today, 0))
+    return max(0, min(BATCH, left_today, UTILITY_TARGET - utility - pending))
+
+
+# --- retomada templates (Talles, 10/10) -------------------------------------------------------------------------
+# A retomada is a template to someone whose 24 h window is closed: the one who never answered the test, the one who
+# talked and went quiet, the robot nobody followed up. Meta: re-engagement "is marketing even if requested by
+# users", so they are submitted as MARKETING (never as utility: misclassifying is what Meta punishes) and count in
+# the 80/20 of the day. The variables carry what is specific to each lead (the layer of Hormozi's onion the brain
+# picks); the fixed text keeps them away from the start and the end and never side by side, and always ends in
+# an honest way out. {{1}} who we talk to, {{2}} the fact of the case, {{3}} the argument of the layer.
+RETOMADA_POOL_FILE = Path(os.getenv("CLOUD_RETOMADA_TEMPLATES_FILE", "/data/templates-retomada.json"))
+RETOMADAS = {
+    "retomada_sem_resposta_01": ("sem_resposta", "Oi, {{1}}! Aqui é o agente do Talles, uma inteligência artificial. {{2}} mandei uma mensagem para vocês como teste de atendimento e ela continua sem resposta. {{3}} Topa ver em 20 minutos com o Talles como isso fica resolvido, ou prefere que eu não mande mais nada?",
+                                 ["pessoal da Clínica Sorriso", "Ontem às 19h40", "Quem chama vocês depois do expediente costuma fechar com quem responde primeiro."]),
+    "retomada_sem_resposta_02": ("sem_resposta", "Olá, {{1}}! Sou o agente do Talles, uma IA. Testei o WhatsApp de vocês {{2}} e a mensagem ficou sem resposta até agora. {{3}} Faz sentido o Talles te mostrar em 20 minutos como responder na hora, ou não é o momento?",
+                                 ["pessoal da Clínica Sorriso", "ontem às 19h40", "É nesse intervalo que o cliente desiste e chama o próximo da lista."]),
+    "retomada_conversa_01": ("conversa", "Oi, {{1}}! Aqui é o agente do Talles, retomando nossa conversa sobre o WhatsApp de vocês. Você comentou que {{2}}, e {{3}}. Topa ver isso em 20 minutos com o Talles, ou prefere que eu não chame mais?",
+                             ["Mariana", "a recepção sai às 18h", "é justamente depois desse horário que o atendente segura o cliente para vocês"]),
+    "retomada_conversa_02": ("conversa", "Olá, {{1}}! É o agente do Talles de novo. Da última vez você falou que {{2}}. {{3}} Vale 20 minutos com o Talles nesta semana, ou não é o momento?",
+                             ["Mariana", "precisava ver isso com o seu sócio", "Se fizer sentido, ele pode entrar na mesma conversa."]),
+    "retomada_robo_01": ("robo", "Oi, {{1}}! Aqui é o agente do Talles, uma IA. {{2}} o atendimento automático de vocês me respondeu na hora, mas depois ninguém continuou a conversa. {{3}} Topa ver em 20 minutos com o Talles como seguir de onde a boas-vindas para, ou prefere que eu não chame mais?",
+                         ["pessoal da Clínica Sorriso", "Ontem às 19h40", "É nesse ponto que o cliente que perguntou o preço vai embora."]),
+    "retomada_robo_02": ("robo", "Olá, {{1}}! Sou o agente do Talles. Quando escrevi para vocês {{2}}, a resposta automática chegou rápido e a conversa parou ali. {{3}} Faz sentido ver em 20 minutos como continuar esse atendimento, ou não é o momento?",
+                         ["pessoal da Clínica Sorriso", "ontem às 19h40", "Um atendente que responde e continua agenda o cliente sem ninguém da equipe."]),
+}
+
+
+def is_retomada(name: str) -> bool:
+    return str(name or "").startswith("retomada_")
+
+
+async def ensure_retomadas(templates: list[dict[str, Any]], meta: dict[str, Any]) -> list[str]:
+    """Submit the retomada templates Meta does not have yet (once each), as MARKETING; write their approved pool."""
+    known = {t.get("name") for t in templates}
+    submitted = []
+    for name, (familia, text, example) in RETOMADAS.items():
+        if name in known or meta["templates"].get(name, {}).get("submetido"):
+            continue
+        body = {"name": name, "category": "MARKETING", "language": "pt_BR",
+                "components": [{"type": "BODY", "text": text, "example": {"body_text": [example]}}]}
+        try:
+            await graph("POST", f"{WABA}/message_templates", body)
+            meta["templates"][name] = {"scheme": "retomada", "tipo": "retomada", "familia": familia, "params": ["p1", "p2", "p3"],
+                                       "estado": "pronto", "submetido": time.time()}
+            submitted.append(name)
+        except Exception as exc:
+            logger.warning("Retomada template %s not submitted: %s", name, exc)
+    pool = [{"name": t["name"], "language": t.get("language", "pt_BR"), "category": t.get("category"), "text": body_of(t),
+             "familia": RETOMADAS[t["name"]][0], "saude": health(t)}
+            for t in templates if t.get("name") in RETOMADAS and t.get("status") == "APPROVED" and health(t) != "RED"]
+    RETOMADA_POOL_FILE.write_text(json.dumps(pool, ensure_ascii=False, indent=1), encoding="utf-8")
+    return submitted
+
+
+def retomada_pool() -> list[dict[str, Any]]:
+    try:
+        return json.loads(RETOMADA_POOL_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def marketing_slot(pool: list[dict[str, Any]], utility_sent: int, marketing_sent: int) -> bool:
+    """Whether one more MARKETING send keeps the day within MARKETING_MAX_SHARE, with utility in stock."""
+    if not any(t.get("category") == "UTILITY" for t in pool):
+        return False
+    return (marketing_sent + 1) / (utility_sent + marketing_sent + 1) <= MARKETING_MAX_SHARE
 
 
 def choose_category(pool: list[dict[str, Any]], utility_sent: int, marketing_sent: int) -> str | None:
