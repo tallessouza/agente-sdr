@@ -93,7 +93,7 @@ def candidates(now: float | None = None, limit: int = 50) -> list[dict[str, Any]
         family = eligible(row, now)
         if not family or not by_family.get(family):
             continue
-        template = random.choice(by_family[family])
+        template = template_health.pick_weighted(by_family[family])
         out.append({"conversation_id": int(row["conversation"]), "familia": family, "template": {"name": template["name"], "text": template["text"]},
                     "negocio": json.loads(row.get("dados") or "{}"), "teste_enviado_em": row.get("enviado_em"), "respondeu_em": row.get("respondeu_em"),
                     "retomadas_anteriores": [{"familia": r["familia"], "status": r["status"], "params": json.loads(r["params"])}
@@ -109,8 +109,8 @@ def clean(value: Any) -> str:
 
 
 def schedule(conversation: int, familia: str, template: str, params: list[Any], send_at: float, send_until: float, motivo: str = "") -> int:
-    if template not in template_health.RETOMADAS:
-        raise ValueError("template desconhecido")
+    if template not in {t["name"] for t in template_health.retomada_pool()}:
+        raise ValueError("template desconhecido ou não aprovado")
     values = [clean(p) for p in params]
     if len(values) != 3 or not all(values):
         raise ValueError("os 3 parâmetros são obrigatórios")

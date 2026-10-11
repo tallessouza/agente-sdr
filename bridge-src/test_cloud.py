@@ -21,6 +21,18 @@ def event(**kw):
     return base
 
 
+def pool_in_db(items, tipo="abertura"):
+    """The template pool in the test database (it used to be a JSON file)."""
+    import templates_db
+    items = items if isinstance(items, list) else [items]
+    with templates_db.connect() as c:
+        for t in items:
+            ok = t.get("status", "APPROVED") == "APPROVED"
+            c.execute("INSERT OR REPLACE INTO tpl_templates(name,tipo,familia,params,texto,categoria,language,status,saude,no_pool) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                      (t["name"], tipo, t.get("familia"), ",".join(t.get("params") or []) or None, t["text"], t.get("category"), t.get("language", "pt_BR"),
+                       t.get("status", "APPROVED"), t.get("saude"), 1 if ok else 0))
+
+
 class CloudTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -50,9 +62,8 @@ class CloudTests(unittest.TestCase):
         self.assertEqual(text, "Oi, boa tarde! Vocês atendem por aqui?")
         self.assertEqual(params["processed_params"], {"1": "boa tarde"})
         self.assertIsNone(cloud.render_template(tpl, {}))
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as fh:
-            json.dump([tpl, {**tpl, "name": "pendente", "status": "PENDING"}], fh)
-        with patch.object(cloud, "TEMPLATES_FILE", fh.name):
+        pool_in_db([tpl, {**tpl, "name": "pendente", "status": "PENDING"}])
+        if True:
             names = {cloud.pick_template({"saudacao_min": "bom dia"})[1]["name"] for _ in range(10)}
         self.assertEqual(names, {"teste_atendimento_01"})
 
@@ -132,9 +143,8 @@ class CloudTests(unittest.TestCase):
     def test_prospect_sends_one_template_with_the_greeting(self):
         prospeccao.enqueue([{"telefone_e164": "+5548999990000", "nome": "Clínica X"}])
         tpl = [{"name": "teste_atendimento_01", "language": "pt_BR", "category": "UTILITY", "text": "Oi, {{1}}! Vocês atendem por aqui?", "params": ["saudacao_min"]}]
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as fh:
-            json.dump(tpl, fh)
-        with patch.object(cloud, "TEMPLATES_FILE", fh.name), patch.object(cloud, "open_conversation", new=AsyncMock(return_value=("5548999990000", 77, 900))), \
+        pool_in_db(tpl)
+        with patch.object(cloud, "open_conversation", new=AsyncMock(return_value=("5548999990000", 77, 900))), \
                 patch.object(cloud, "post_message", new=AsyncMock()) as post, patch.object(sdr, "add_label", new=AsyncMock()), \
                 patch.object(sdr, "private_note", new=AsyncMock()), patch.object(app, "PROSPECT_CHANNEL", "cloud"):
             data = prospeccao.next_queued("5548999990000")[1]
@@ -157,9 +167,8 @@ class CloudTests(unittest.TestCase):
 
     def test_conversation_failure_returns_the_number_to_the_queue(self):
         prospeccao.enqueue([{"telefone_e164": "+5548999990000", "nome": "Clínica X"}])
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as fh:
-            json.dump([{"name": "abordagem_a01", "language": "pt_BR", "category": "UTILITY", "text": "Olá, {{1}}. Obrigado!", "params": ["abertura_teste"]}], fh)
-        with patch.object(cloud, "TEMPLATES_FILE", fh.name), patch.object(cloud, "open_conversation", new=AsyncMock(side_effect=RuntimeError("chatwoot down"))), \
+        pool_in_db([{"name": "abordagem_a01", "language": "pt_BR", "category": "UTILITY", "text": "Olá, {{1}}. Obrigado!", "params": ["abertura_teste"]}])
+        with patch.object(cloud, "open_conversation", new=AsyncMock(side_effect=RuntimeError("chatwoot down"))), \
                 patch.object(cloud, "post_message", new=AsyncMock()) as post:
             result = asyncio.run(app.prospect_cloud("5548999990000", {}, time.time()))
         self.assertEqual(result, "erro")
@@ -208,7 +217,7 @@ class CloudTests(unittest.TestCase):
         templates = [mk(i, "APPROVED", "UTILITY", "GREEN") for i in range(1, 9)] + [
             mk(20, "APPROVED", "MARKETING", "RED"), mk(21, "APPROVED", "MARKETING", "YELLOW"), mk(22, "APPROVED", "MARKETING", "GREEN"),
             mk(23, "APPROVED", "MARKETING"), mk(24, "PENDING", "MARKETING"), mk(25, "APPROVED", "UTILITY", "RED")]
-        with patch.object(th, "META_FILE", Path(self.tmp.name) / "meta.json"):
+        if True:
             meta = th.load_meta()
             for t in templates:
                 meta["templates"][t["name"]] = {"scheme": "vencedor", "params": ["saudacao_min"], "estado": "pronto"}
@@ -228,7 +237,7 @@ class CloudTests(unittest.TestCase):
             {"name": "abordagem_b02", "status": "PENDING", "category": "UTILITY", "language": "pt_BR", "components": [body("Oi, como vai? {{1}}. Valeu!")]},
             {"name": "hello_world", "status": "APPROVED", "category": "UTILITY", "language": "en_US", "components": [body("Hello World")]},
         ]
-        with patch.object(th, "META_FILE", Path(self.tmp.name) / "meta.json"):
+        if True:
             meta = th.load_meta()
             pool = th.build_pool(templates, meta)
             self.assertEqual({(t["name"], t["category"], tuple(t["params"])) for t in pool},
@@ -245,7 +254,7 @@ class CloudTests(unittest.TestCase):
 
     def test_bait_waits_for_utility_then_is_edited_and_scored(self):
         import template_health as th
-        with patch.object(th, "META_FILE", Path(self.tmp.name) / "meta.json"):
+        if True:
             meta = th.load_meta()
             meta["templates"]["isca_001"] = {"scheme": "isca", "params": ["saudacao_min"], "alvo": "Oi, {{1}}! Consigo falar com alguém agora? Tenho uma dúvida.", "estado": "isca"}
             approved = [{"id": "77", "name": "isca_001", "status": "APPROVED", "category": "UTILITY", "language": "pt_BR",
@@ -288,7 +297,7 @@ class CloudTests(unittest.TestCase):
             {"id": "3", "name": "frase_var_001", "status": "PENDING", "category": "MARKETING", "language": "pt_BR", "components": body},
             {"id": "4", "name": "frase_var_002", "status": "PENDING", "category": "UTILITY", "language": "pt_BR", "components": body},
         ]
-        with patch.object(th, "META_FILE", Path(self.tmp.name) / "meta.json"):
+        if True:
             meta = th.load_meta()
             for t in templates:
                 meta["templates"][t["name"]] = {"scheme": t["name"].rsplit("_", 1)[0], "params": ["saudacao_min"], "estado": "pronto"}
@@ -314,9 +323,8 @@ class CloudTests(unittest.TestCase):
 
     def test_queue_pauses_itself_when_no_template_is_allowed(self):
         prospeccao.enqueue([{"telefone_e164": "+5548999990000", "nome": "Clínica X"}])
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as fh:
-            json.dump([{"name": "abordagem_b01", "language": "pt_BR", "category": "MARKETING", "text": "Oi, tudo bem? {{1}}. Fico no aguardo.", "params": ["frase_teste"]}], fh)
-        with patch.object(cloud, "TEMPLATES_FILE", fh.name), patch.object(cloud, "open_conversation", new=AsyncMock()) as opened, \
+        pool_in_db([{"name": "abordagem_b01", "language": "pt_BR", "category": "MARKETING", "text": "Oi, tudo bem? {{1}}. Fico no aguardo.", "params": ["frase_teste"]}])
+        with patch.object(cloud, "open_conversation", new=AsyncMock()) as opened, \
                 patch.object(cloud, "post_message", new=AsyncMock()) as post:
             self.assertTrue(prospeccao.claim("5548999990000"))
             result = asyncio.run(app.prospect_cloud("5548999990000", {}, time.time()))

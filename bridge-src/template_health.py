@@ -23,13 +23,13 @@ from typing import Any
 
 import httpx
 
+import templates_db
+
 logger = logging.getLogger("bridge.templates")
 
 TOKEN = os.getenv("WA_CLOUD_TOKEN", "")
 WABA = os.getenv("WA_CLOUD_WABA", "")
 GRAPH = "https://graph.facebook.com/v23.0"
-POOL_FILE = Path(os.getenv("CLOUD_TEMPLATES_FILE", "/data/templates-pool.json"))
-META_FILE = Path(os.getenv("CLOUD_TEMPLATES_META_FILE", "/data/templates-meta.json"))
 HEALTH_SECONDS = int(os.getenv("TEMPLATE_HEALTH_SECONDS", "900"))
 UTILITY_TARGET = int(os.getenv("TEMPLATE_UTILITY_TARGET", "20"))
 BATCH = int(os.getenv("TEMPLATE_BATCH", "30"))
@@ -112,16 +112,36 @@ BAD_STATUS = {"FLAGGED", "RESTRICTED", "BANNED", "DISCONNECTED"}
 
 
 def load_meta() -> dict[str, Any]:
-    try:
-        meta = json.loads(META_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        meta = {}
+    """The generator's state, from the central database (templates_db; the old JSON file is imported once)."""
+    meta = templates_db.read_meta()
     meta.setdefault("templates", {}); meta.setdefault("usados", []); meta.setdefault("placar", {})
     return meta
 
 
 def save_meta(meta: dict[str, Any]) -> None:
-    META_FILE.write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+    templates_db.write_meta(meta)
+
+
+HEALTH_WEIGHT = {"GREEN": 1.0, "UNKNOWN": 0.8, "": 0.8, "YELLOW": 0.3}
+
+
+def pick_weighted(options: list[dict[str, Any]], rng: Any = None) -> dict[str, Any] | None:
+    """A template drawn by health: YELLOW ones (Meta sees blocks or reports) go out much less than GREEN."""
+    if not options:
+        return None
+    return (rng or random).choices(options, weights=[HEALTH_WEIGHT.get(str(t.get("saude") or "").upper(), 0.5) for t in options])[0]
+
+
+def tipo_of(name: str, meta: dict[str, Any] | None = None) -> str | None:
+    """'retomada', 'abertura' (first contact, generated or legacy) or None (not ours, e.g. hello_world)."""
+    if is_retomada(name):
+        return "retomada"
+    return "abertura" if params_for(name, meta) is not None else None
+
+
+def familia_of(name: str) -> str | None:
+    """retomada_<familia>_NN -> familia."""
+    return name[len("retomada_"):].rsplit("_", 1)[0] if is_retomada(name) else None
 
 
 def params_for(name: str, meta: dict[str, Any] | None = None) -> list[str] | None:
@@ -348,9 +368,14 @@ async def check_once(sync_chatwoot: Any = None) -> dict[str, Any]:
     deleted = await trim_marketing(templates, meta)
     if deleted or edited:
         templates = await list_templates()
+    save_meta(meta)  # the rows must exist before Meta's view of them is stored
+    saude = templates_db.sync_from_meta(templates, lambda name: tipo_of(name, meta), health, body_of)
+    for change in saude:
+        logger.warning("Template health change: %s", json.dumps(change, ensure_ascii=False))
     pool = build_pool(templates, meta)
-    POOL_FILE.write_text(json.dumps(pool, ensure_ascii=False, indent=1), encoding="utf-8")
-    utility = sum(t["category"] == "UTILITY" for t in pool)
+    templates_db.set_pool("abertura", [t["name"] for t in pool])
+    # The farm keeps the target in HEALTHY utility templates: a YELLOW one still sends (less) but gets replaced.
+    utility = sum(t["category"] == "UTILITY" and t.get("saude") != "YELLOW" for t in pool)
     pending = sum(1 for t in templates if t.get("status") == "PENDING" and params_for(t.get("name", ""), meta) is not None and not is_retomada(t.get("name", "")))
     submitted: list[str] = []
     count = new_batch_size(utility, pending, meta)
@@ -365,7 +390,7 @@ async def check_once(sync_chatwoot: Any = None) -> dict[str, Any]:
     report = {"quando": time.time(), "numero": numero, "utility_aprovados": utility, "marketing_aprovados": sum(t["category"] == "MARKETING" for t in pool),
               "pendentes": pending, "enviados_para_aprovacao": len(submitted), "retomadas_enviadas_para_aprovacao": retomadas,
               "retomadas_aprovadas": len(retomada_pool()), "iscas_editadas": edited, "marketing_apagados": deleted,
-              "placar": meta["placar"]}
+              "mudancas_de_saude": saude, "placar": meta["placar"]}
     logger.warning("Template health: %s", json.dumps(report, ensure_ascii=False))
     return report
 
@@ -385,7 +410,6 @@ def new_batch_size(utility: int, pending: int, meta: dict[str, Any], now: float 
 # the 80/20 of the day. The variables carry what is specific to each lead (the layer of Hormozi's onion the brain
 # picks); the fixed text keeps them away from the start and the end and never side by side, and always ends in
 # an honest way out. {{1}} who we talk to, {{2}} the fact of the case, {{3}} the argument of the layer.
-RETOMADA_POOL_FILE = Path(os.getenv("CLOUD_RETOMADA_TEMPLATES_FILE", "/data/templates-retomada.json"))
 RETOMADAS = {
     "retomada_sem_resposta_01": ("sem_resposta", "Oi, {{1}}! Aqui é o agente do Talles, uma inteligência artificial. {{2}} mandei uma mensagem para vocês como teste de atendimento e ela continua sem resposta. {{3}} Topa ver em 20 minutos com o Talles como isso fica resolvido, ou prefere que eu não mande mais nada?",
                                  ["pessoal da Clínica Sorriso", "Ontem às 19h40", "Quem chama vocês depois do expediente costuma fechar com quem responde primeiro."]),
@@ -406,34 +430,101 @@ def is_retomada(name: str) -> bool:
     return str(name or "").startswith("retomada_")
 
 
-async def ensure_retomadas(templates: list[dict[str, Any]], meta: dict[str, Any]) -> list[str]:
-    """Submit the retomada templates Meta does not have yet (once each), as MARKETING; write their approved pool."""
+# The retomada farm (Talles 11/10: "templates sendo farmados, tanto de abertura quanto de retomada"): variations of
+# each family, always submitted as MARKETING, until RETOMADA_TARGET healthy (approved or pending) per family; at most
+# RETOMADA_DAILY_MAX a day. The slots keep their meaning in every variation: {{1}} who, {{2}} the fact, {{3}} the argument.
+RETOMADA_TARGET = int(os.getenv("RETOMADA_TEMPLATE_TARGET", "4"))
+RETOMADA_DAILY_MAX = int(os.getenv("RETOMADA_TEMPLATE_DAILY_MAX", "6"))
+RETOMADA_SKELETONS = {
+    "sem_resposta": ["{abre}, {{{{1}}}}! {sou} {{{{2}}}} mandei uma mensagem para vocês como teste de atendimento e ela continua sem resposta. {{{{3}}}} {fecha}",
+                     "{abre}, {{{{1}}}}! {sou} Testei o WhatsApp de vocês {{{{2}}}} e a mensagem ficou sem resposta até agora. {{{{3}}}} {fecha}",
+                     "{abre}, {{{{1}}}}! {sou} Escrevi para vocês {{{{2}}}} como teste de tempo de resposta, e ninguém respondeu ainda. {{{{3}}}} {fecha}"],
+    "conversa": ["{abre}, {{{{1}}}}! {volta} Você comentou que {{{{2}}}}, e {{{{3}}}}. {fecha}",
+                 "{abre}, {{{{1}}}}! {volta} Da última vez você falou que {{{{2}}}}. {{{{3}}}} {fecha}"],
+    "robo": ["{abre}, {{{{1}}}}! {sou} {{{{2}}}} o atendimento automático de vocês me respondeu na hora, mas depois ninguém continuou a conversa. {{{{3}}}} {fecha}",
+             "{abre}, {{{{1}}}}! {sou} Quando escrevi para vocês {{{{2}}}}, a resposta automática chegou rápido e a conversa parou ali. {{{{3}}}} {fecha}"],
+}
+RETOMADA_OPEN = ["Oi", "Olá"]
+RETOMADA_SOU = ["Aqui é o agente do Talles, uma inteligência artificial.", "Sou o agente do Talles, uma IA.", "Quem escreve é o agente do Talles, uma IA."]
+RETOMADA_VOLTA = ["Aqui é o agente do Talles, retomando nossa conversa sobre o WhatsApp de vocês.", "É o agente do Talles de novo.",
+                  "Aqui é o agente do Talles, voltando à nossa conversa sobre o atendimento de vocês."]
+RETOMADA_FECHA = ["Topa ver em 20 minutos com o Talles como isso fica resolvido, ou prefere que eu não mande mais nada?",
+                  "Faz sentido o Talles te mostrar em 20 minutos como responder na hora, ou não é o momento?",
+                  "Vale 20 minutos com o Talles para ver isso funcionando, ou prefere que eu pare por aqui?",
+                  "Topa ver isso em 20 minutos com o Talles, ou prefere que eu não chame mais?"]
+
+
+def retomada_example(familia: str, text: str) -> list[str]:
+    """Example values Meta requires, shaped like the slot (sentence start or continuation)."""
+    starts = lambda slot: text.split("{{%d}}" % slot, 1)[0].rstrip()[-1:] in {".", "!", "?", ""}
+    when = "Ontem às 19h40" if starts(2) else "ontem às 19h40"
+    fact = when if familia != "conversa" else "a recepção sai às 18h"
+    arg = ("Quem chama depois do expediente costuma fechar com quem responde primeiro." if starts(3)
+           else "é justamente depois desse horário que o atendente segura o cliente para vocês")
+    return ["pessoal da Clínica Sorriso", fact, arg]
+
+
+def new_retomada_variants(familia: str, count: int, templates: list[dict[str, Any]], meta: dict[str, Any], rng: random.Random | None = None) -> list[dict[str, Any]]:
+    rng = rng or random.Random()
+    texts = set(meta["usados"]) | {body_of(t) for t in templates}
+    names = {t.get("name", "") for t in templates} | set(meta["templates"])
+    out, attempts = [], 0
+    while len(out) < count and attempts < count * 50:
+        attempts += 1
+        text = rng.choice(RETOMADA_SKELETONS[familia]).format(abre=rng.choice(RETOMADA_OPEN), sou=rng.choice(RETOMADA_SOU),
+                                                               volta=rng.choice(RETOMADA_VOLTA), fecha=rng.choice(RETOMADA_FECHA))
+        if text in texts:
+            continue
+        number = 1
+        while f"retomada_{familia}_{number:02d}" in names:
+            number += 1
+        name = f"retomada_{familia}_{number:02d}"
+        names.add(name); texts.add(text)
+        out.append({"name": name, "familia": familia, "text": text, "example": retomada_example(familia, text)})
+    return out
+
+
+async def submit_retomada(name: str, familia: str, text: str, example: list[str], meta: dict[str, Any]) -> bool:
+    body = {"name": name, "category": "MARKETING", "language": "pt_BR",
+            "components": [{"type": "BODY", "text": text, "example": {"body_text": [example]}}]}
+    meta["usados"].append(text)
+    try:
+        await graph("POST", f"{WABA}/message_templates", body)
+    except Exception as exc:
+        logger.warning("Retomada template %s not submitted: %s", name, exc)
+        return False
+    meta["templates"][name] = {"scheme": "retomada", "tipo": "retomada", "familia": familia, "params": ["p1", "p2", "p3"],
+                               "estado": "pronto", "submetido": time.time()}
+    return True
+
+
+async def ensure_retomadas(templates: list[dict[str, Any]], meta: dict[str, Any], now: float | None = None) -> list[str]:
+    """Seeds once, then the farm up to RETOMADA_TARGET healthy per family; the approved, non-RED ones form the pool."""
     known = {t.get("name") for t in templates}
     submitted = []
     for name, (familia, text, example) in RETOMADAS.items():
-        if name in known or meta["templates"].get(name, {}).get("submetido"):
-            continue
-        body = {"name": name, "category": "MARKETING", "language": "pt_BR",
-                "components": [{"type": "BODY", "text": text, "example": {"body_text": [example]}}]}
-        try:
-            await graph("POST", f"{WABA}/message_templates", body)
-            meta["templates"][name] = {"scheme": "retomada", "tipo": "retomada", "familia": familia, "params": ["p1", "p2", "p3"],
-                                       "estado": "pronto", "submetido": time.time()}
-            submitted.append(name)
-        except Exception as exc:
-            logger.warning("Retomada template %s not submitted: %s", name, exc)
-    pool = [{"name": t["name"], "language": t.get("language", "pt_BR"), "category": t.get("category"), "text": body_of(t),
-             "familia": RETOMADAS[t["name"]][0], "saude": health(t)}
-            for t in templates if t.get("name") in RETOMADAS and t.get("status") == "APPROVED" and health(t) != "RED"]
-    RETOMADA_POOL_FILE.write_text(json.dumps(pool, ensure_ascii=False, indent=1), encoding="utf-8")
+        if name not in known and not meta["templates"].get(name, {}).get("submetido"):
+            if await submit_retomada(name, familia, text, example, meta):
+                submitted.append(name)
+    today = time.strftime("%Y-%m-%d", time.gmtime((time.time() if now is None else now) - 3 * 3600))
+    left = RETOMADA_DAILY_MAX - int(meta.setdefault("submetidos_retomada", {}).get(today, 0)) - len(submitted)
+    for familia in RETOMADA_SKELETONS:
+        healthy = [t for t in templates if familia_of(t.get("name", "")) == familia
+                   and (t.get("status") == "PENDING" or (t.get("status") == "APPROVED" and health(t) not in {"RED", "YELLOW"}))]
+        need = min(max(0, RETOMADA_TARGET - len(healthy)), left)
+        for v in new_retomada_variants(familia, need, templates, meta):
+            if await submit_retomada(v["name"], familia, v["text"], v["example"], meta):
+                submitted.append(v["name"])
+                left -= 1
+    meta["submetidos_retomada"][today] = int(meta["submetidos_retomada"].get(today, 0)) + len(submitted)
+    usable = [t["name"] for t in templates if is_retomada(t.get("name", "")) and t.get("status") == "APPROVED" and health(t) != "RED"]
+    templates_db.set_pool("retomada", usable)
     return submitted
 
 
 def retomada_pool() -> list[dict[str, Any]]:
-    try:
-        return json.loads(RETOMADA_POOL_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
+    """Approved, non-RED retomada templates, with their family (from the central database)."""
+    return [{**t, "familia": t.get("familia") or familia_of(t["name"])} for t in templates_db.pool("retomada")]
 
 
 def marketing_slot(pool: list[dict[str, Any]], utility_sent: int, marketing_sent: int) -> bool:

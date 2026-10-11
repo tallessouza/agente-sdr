@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+from test_cloud import pool_in_db
+
 import app
 import cloud
 import fila
@@ -34,17 +36,15 @@ class RetomadaTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         db = Path(self.tmp.name) / "bridge.db"
-        self.pool_file = Path(self.tmp.name) / "retomada.json"
         self.patches = [patch.object(sdr, "DB_PATH", db), patch.object(handover, "DB_PATH", db), patch.object(app, "DB_PATH", db),
-                        patch.object(fila, "DB_PATH", db), patch.object(th, "RETOMADA_POOL_FILE", self.pool_file), patch.object(cloud, "CLOUD_INBOX_ID", 2)]
+                        patch.object(fila, "DB_PATH", db), patch.object(cloud, "CLOUD_INBOX_ID", 2)]
         for p in self.patches:
             p.start()
         app.db().close()
         prospeccao.connect().close()
         retomada.connect().close()
-        self.pool_file.write_text(json.dumps([
-            {"name": name, "language": "pt_BR", "category": "MARKETING", "text": text, "familia": familia, "saude": "UNKNOWN"}
-            for name, (familia, text, _example) in th.RETOMADAS.items()]), encoding="utf-8")
+        pool_in_db([{"name": name, "category": "MARKETING", "text": text, "familia": familia, "saude": "UNKNOWN"}
+                    for name, (familia, text, _example) in th.RETOMADAS.items()], tipo="retomada")
 
     def tearDown(self):
         for p in self.patches:
@@ -101,7 +101,7 @@ class RetomadaTests(unittest.TestCase):
         self.assertIn("Ontem às 19h40 mandei uma mensagem", text)
         self.assertNotIn("\n", template["processed_params"]["3"])  # Meta refuses line breaks inside a variable
         self.assertEqual(template["name"], "retomada_sem_resposta_01")
-        self.assertEqual(post.await_args.kwargs["attributes"], {"bridge_retomada": rid})
+        self.assertEqual(post.await_args.kwargs["attributes"], {"bridge_retomada": rid, "bridge_template": "retomada_sem_resposta_01"})
         self.assertEqual(prospeccao.kv_get(f"tpl:{day}:MARKETING"), "1")
         self.assertEqual(retomada.history(201)[0]["status"], "enviada")
         self.assertEqual(retomada.candidates(now + 60), [])  # one a week at most
@@ -115,7 +115,7 @@ class RetomadaTests(unittest.TestCase):
     def test_retomadas_never_enter_the_first_contact_pool_nor_get_trimmed(self):
         templates = [{"id": "9", "name": "retomada_conversa_01", "status": "APPROVED", "category": "MARKETING", "language": "pt_BR",
                       "components": [{"type": "BODY", "text": th.RETOMADAS["retomada_conversa_01"][1]}]}]
-        with patch.object(th, "META_FILE", Path(self.tmp.name) / "meta.json"):
+        if True:
             meta = th.load_meta()
             meta["templates"]["retomada_conversa_01"] = {"scheme": "retomada", "tipo": "retomada", "params": ["p1", "p2", "p3"], "estado": "pronto"}
             self.assertEqual(th.build_pool(templates, meta), [])

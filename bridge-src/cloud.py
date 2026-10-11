@@ -135,7 +135,7 @@ async def post_message(conversation_id: int, content: str, media: tuple[bytes, s
         return r.json()
 
 
-# Written by template_health every half hour; the env points both modules at the same file.
+# Kept only so old configs do not break; the pool now lives in the central database (templates_db).
 TEMPLATES_FILE = os.getenv("CLOUD_TEMPLATES_FILE", "/data/templates-pool.json")
 # What goes inside {{1}} of the short "Olá, {{1}}. Obrigado!" templates: the customer-like test question.
 # No final punctuation: the fixed text of the template continues right after it.
@@ -179,17 +179,12 @@ def test_fields(saudacao_min: str, rng: Any = None) -> dict[str, str]:
 def approved_templates() -> list[dict[str, Any]]:
     """Live list of approved first-contact templates (rotated so no single text carries the volume).
 
-    Each entry: {"name", "language", "category", "text", "params": ["nome", ...]}. `params` fills {{1}}, {{2}}...
-    from the business data in order. Missing or unreadable file: an empty list (the queue then pauses).
+    Each entry: name, language, category, text, params (the business fields that fill the variables, in order) and
+    saude. Read from the central database (templates_db, kept by template_health); nothing there yet: an empty list
+    (the queue then pauses instead of guessing).
     """
-    try:
-        with open(TEMPLATES_FILE, encoding="utf-8") as fh:
-            items = json.load(fh)
-        items = [t for t in items if isinstance(t, dict) and t.get("name") and t.get("text") and t.get("status", "APPROVED") == "APPROVED"]
-        return items
-    except (OSError, json.JSONDecodeError):
-        # No pool yet: nothing is approved as far as we know, so the queue pauses instead of guessing.
-        return []
+    import templates_db  # late import: keeps this module usable on its own
+    return [t for t in templates_db.pool("abertura") if t.get("name") and t.get("text")]
 
 
 def render_template(template: dict[str, Any], business: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
@@ -218,10 +213,13 @@ async def sync_templates() -> None:
 
 
 def pick_template(business: dict[str, Any], rng: Any = None, category: str | None = None) -> tuple[str, dict[str, Any]]:
+    """A healthy template first: drawn by Meta's quality (YELLOW much less than GREEN), then the next that renders."""
     import random
+    import template_health
     candidates = [t for t in approved_templates() if not category or t.get("category", "UTILITY") == category]
-    (rng or random).shuffle(candidates)
-    for template in candidates:
+    while candidates:
+        template = template_health.pick_weighted(candidates, rng or random)
+        candidates.remove(template)
         rendered = render_template(template, business)
         if rendered:
             return rendered

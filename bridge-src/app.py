@@ -16,6 +16,7 @@ import monitor
 import prospeccao
 import retomada
 import template_health
+import templates_db
 import random
 import sdr
 import tempfile
@@ -1578,13 +1579,14 @@ async def prospect_cloud(number: str, data: dict[str, Any], now: float) -> str:
     conn.commit(); conn.close()
     prospeccao.update(number, status="enviando", jid=jid, conversation=conversation_id, texto=text, enviado_em=now)
     try:
-        await cloud.post_message(conversation_id, text, template=template)
+        await cloud.post_message(conversation_id, text, template=template, attributes={"bridge_template": template["name"]})
     except Exception as exc:
         # Unknown outcome: Chatwoot may have queued it. Never retried (at most once).
         logger.exception("Prospect cloud send failed number=%s", number)
         prospeccao.update(number, status="erro", erro="envio incerto: " + str(exc)[:200])
         return "erro"
     prospeccao.kv_set(f"tpl:{day}:{category}", str((utility_sent if category == "UTILITY" else marketing_sent) + 1))
+    templates_db.record_send(template["name"], conversation_id, day)
     current = prospeccao.for_jid(jid)
     if current and current.get("status") == "enviando":
         prospeccao.update(number, status="enviado")
@@ -1622,13 +1624,14 @@ async def send_due_retomada(now: float) -> str | None:
     text, template = rendered
     retomada.mark(row["id"], "enviando")  # claimed: never sent twice, even if the send fails
     try:
-        await cloud.post_message(conversation, text, template=template, attributes={"bridge_retomada": row["id"]})
+        await cloud.post_message(conversation, text, template=template, attributes={"bridge_retomada": row["id"], "bridge_template": template["name"]})
     except Exception as exc:
         logger.exception("Retomada send failed conversation=%s", conversation)
         retomada.mark(row["id"], "falhou", str(exc))
         return "erro"
     retomada.mark(row["id"], "enviada")
     prospeccao.kv_set(f"tpl:{day}:MARKETING", str(marketing_sent + 1))
+    templates_db.record_send(template["name"], conversation, day)
     handover.record(conversation, f"retomada:{row['id']}", "retomada_enviada", text)
     try:
         await sdr.private_note(conversation, f"🔁 Retomada ({row['familia']}, template {template['name']}): {row.get('motivo') or ''}")
@@ -1950,7 +1953,7 @@ async def sdr_retomada_template(familia: str, request: Request):
     options = [t for t in template_health.retomada_pool() if t.get("familia") == familia]
     if not options:
         return JSONResponse({"detail": "nenhum template aprovado dessa família"}, 404)
-    template = random.choice(options)
+    template = template_health.pick_weighted(options)
     return {"name": template["name"], "text": template["text"]}
 
 @app.post("/sdr/retomadas")
@@ -2181,6 +2184,8 @@ async def cloud_inbox_event(payload: dict[str, Any]) -> None:
     conn = db(); row = conn.execute("SELECT jid, source_id FROM contacts WHERE conversation_id=?", (conversation_id,)).fetchone(); conn.close()
     if event == "message_updated":
         # A first contact Meta refused (no WhatsApp, blocked): mark the business instead of waiting for a reply.
+        if str(payload.get("status") or "") == "failed" and attributes.get("bridge_template"):
+            templates_db.record_failure(str(attributes["bridge_template"]), datetime_local(time.time()).strftime("%Y-%m-%d"))
         if str(payload.get("status") or "") == "failed" and attributes.get("bridge_retomada"):
             retomada.mark(int(attributes["bridge_retomada"]), "falhou", str(attributes.get("external_error") or "falha na entrega"))
         if str(payload.get("status") or "") == "failed" and row and attributes.get("bridge_agent"):
