@@ -10,6 +10,7 @@ import sqlite3
 import time
 import uuid
 import cloud
+import fila
 import handover
 import monitor
 import prospeccao
@@ -102,11 +103,25 @@ async def start_background_workers() -> None:
         asyncio.create_task(template_health_worker(), name="template-health")
     if cloud.enabled():
         asyncio.create_task(monitor_worker(), name="monitor")
+    asyncio.create_task(brain_event_worker(), name="brain-events")
+    if os.getenv("BRIDGE_RECOVER", "1") != "0":
+        try:
+            recover_turns()
+        except Exception:
+            logger.exception("Turn recovery failed at startup")
+
+
+DRAIN_SECONDS = float(os.getenv("BRIDGE_DRAIN_SECONDS", "45"))
 
 
 @app.on_event("shutdown")
 async def stop_background_workers() -> None:
     global _outbox_task, _followup_task
+    # Let the replies being written finish (Swarm gives stop_grace_period); what does not finish is in the queue.
+    running = [t for t in hermes_tasks.values() if not t.done()]
+    if running:
+        logger.warning("Draining %d agent turns before stopping", len(running))
+        await asyncio.wait(running, timeout=DRAIN_SECONDS)
     if _outbox_task:
         _outbox_task.cancel()
         try:
@@ -905,11 +920,67 @@ def fire_and_forget(coro: Any) -> None:
 
 
 async def brain_event(path: str, payload: dict[str, Any]) -> None:
+    """Notices to the brain are stored first and retried until they arrive (10/10: lost ones left #69 and #78 without follow-ups)."""
     if not SDR_BRAIN_URL: return
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            await client.post(SDR_BRAIN_URL + path, headers={"Authorization": f"Bearer {SDR_BRAIN_TOKEN}"}, json=payload)
-    except Exception: logger.debug("SDR event failed", exc_info=True)
+        event_id = fila.queue_event(path, payload)
+    except Exception:
+        logger.exception("Could not persist the brain event %s", path)
+        event_id = None
+    await deliver_brain_event(event_id, path, payload, 0)
+
+
+async def deliver_brain_event(event_id: int | None, path: str, payload: dict[str, Any], attempts: int) -> None:
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post(SDR_BRAIN_URL + path, headers={"Authorization": f"Bearer {SDR_BRAIN_TOKEN}"}, json=payload)
+            r.raise_for_status()
+        if event_id:
+            fila.event_done(event_id)
+    except Exception:
+        logger.warning("SDR event %s failed (attempt %s); it will be retried", path, attempts + 1)
+        if event_id:
+            fila.event_failed(event_id, attempts)
+
+
+async def brain_event_worker() -> None:
+    while True:
+        try:
+            for event_id, path, payload, attempts in await asyncio.to_thread(fila.due_events):
+                await deliver_brain_event(event_id, path, payload, attempts)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("brain event retry failed")
+        await asyncio.sleep(30)
+
+
+async def redeliver_batch(batch: dict[str, Any]) -> None:
+    """A batch whose final parts were decided before a restart: send only what is missing."""
+    lote = batch["lote"]
+    try:
+        await deliver_agent_reply(batch["jid"], batch["source_id"], int(batch["conversation"]), "", batch["reply_to"], batch["last_message"] or "", lote=lote)
+        fila.finish(fila.batch_external_ids(lote), lote)
+        logger.warning("Resumed the interrupted reply lote=%s conversation=%s", lote, batch["conversation"])
+    except Exception:
+        logger.exception("Could not resume lote=%s", lote)
+
+
+def recover_turns() -> int:
+    """After a restart: finish the cut replies and put every unanswered lead message back in line."""
+    batches, turns = fila.unfinished()
+    for batch in batches:
+        fire_and_forget(redeliver_batch(batch))
+    for turn in turns:
+        hermes_pending[turn["jid"]].append((turn["content"], fila.load_media(turn["media"]) or None, turn["source_id"], int(turn["conversation"]),
+                                           turn["external_id"], json.loads(turn["evento"]) if turn["evento"] else None))
+    fila.requeue([t["external_id"] for t in turns])
+    for jid in {t["jid"] for t in turns}:
+        if jid not in hermes_tasks:
+            hermes_tasks[jid] = asyncio.create_task(hermes_batch_worker(jid))
+    if batches or turns:
+        logger.warning("Recovered %d cut replies and %d unanswered messages after the restart", len(batches), len(turns))
+    return len(batches) + len(turns)
 
 async def record_offer_from_origin(conversation_id: int, origin: dict[str, Any] | None) -> None:
     """The campaign text names the offer: record it like a [[REGISTRO: oferta = ...]]."""
@@ -1008,7 +1079,8 @@ def lead_interrupted(jid: str) -> bool:
     return bool(hermes_pending.get(jid))
 
 
-async def deliver_agent_reply(jid: str, source_id: str, conversation_id: int, reply: str, reply_to_id: str | None, last_message: str) -> bool:
+async def deliver_agent_reply(jid: str, source_id: str, conversation_id: int, reply: str, reply_to_id: str | None, last_message: str,
+                              lote: str | None = None) -> bool:
     """Parse directives, apply guardrails, then send like a person typing.
 
     Returns False when the lead interrupted before anything was sent: the
@@ -1053,8 +1125,20 @@ async def deliver_agent_reply(jid: str, source_id: str, conversation_id: int, re
         return True
     # Deterministic style rule from the owner: no dashes or colons chaining sentences.
     parts = [sdr.plain_style(part) for part in parts]
+    already = 0
+    if lote:
+        # The final parts are fixed once: after a restart the same answer goes on from where it stopped.
+        stored = fila.final_parts(lote)
+        if stored:
+            parts, directives, already = stored
+            draft = list(parts)
+        else:
+            fila.save_final(lote, parts, directives)
     sent: list[str] = []
     for index, part in enumerate(parts):
+        if index < already:
+            sent.append(part)  # went out before the restart
+            continue
         if lead_interrupted(jid):
             break
         await agent_presence(jid)
@@ -1062,6 +1146,8 @@ async def deliver_agent_reply(jid: str, source_id: str, conversation_id: int, re
         if lead_interrupted(jid):
             break
         await agent_send_text(jid, source_id, conversation_id, part, reply_to=reply_to_id if index == 0 else None)
+        if lote:
+            fila.mark_sent(lote, index + 1)
         sdr.touch_activity(conversation_id, agent=True)
         sent.append(part)
     # Hermes keeps its draft in the session; tell it what the lead really got.
@@ -1126,9 +1212,13 @@ async def hermes_batch_worker(jid: str) -> None:
                 # Also covers a password said in an audio or written in a document.
                 combined, secret = sdr.redact_credentials(combined)
                 logger.info("Hermes batch jid=%s messages=%d media=%d structured_events=%d history_media=%s", jid, len(batch), len(media), len(structured_events), bool(media and not any(item for _text, item, _source, _conversation, _external_id, _event in batch)))
+                external_ids = [item[4] for item in batch]
+                lote = "l:" + external_ids[0]
+                fila.start_batch(lote, external_ids, jid, conversation_id, source_id, combined, reply_to_id)
                 try:
                     if await handover.paused(conversation_id):
                         handover.record(conversation_id, uuid.uuid4().hex, "cliente", combined)
+                        fila.finish(external_ids, lote)
                         continue
                     version = handover.revision(conversation_id)
                     history, through = handover.context(conversation_id)
@@ -1145,6 +1235,7 @@ async def hermes_batch_worker(jid: str) -> None:
                     reply = await ask_hermes(prompt, HERMES_SESSION_PREFIX + jid + sdr.session_suffix(jid), media, structured_events, sdr.trusted_context(conversation_id, guidance, credential_notice_sent=notice_sent))
                     if await handover.paused(conversation_id) or version != handover.revision(conversation_id):
                         handover.record(conversation_id, uuid.uuid4().hex, "cliente", combined)
+                        fila.finish(external_ids, lote)
                         continue
                     if reply and lead_interrupted(jid):
                         # The lead wrote while Hermes was thinking: this reply
@@ -1153,17 +1244,21 @@ async def hermes_batch_worker(jid: str) -> None:
                         parts_draft, _ = sdr.parse_reply(extract_hermes_media(reply)[0])
                         sdr.record_correction(conversation_id, parts_draft, [], "interrompida pelo lead")
                         hermes_pending[jid][:0] = batch
+                        fila.requeue(external_ids, lote)
                         logger.info("SDR reply discarded, lead interrupted conversation=%s", conversation_id)
                         continue
                     if reply:
-                        delivered = await deliver_agent_reply(jid, source_id, conversation_id, reply, reply_to_id, combined)
+                        delivered = await deliver_agent_reply(jid, source_id, conversation_id, reply, reply_to_id, combined, lote=lote)
                         if not delivered:
                             hermes_pending[jid][:0] = batch
+                            fila.requeue(external_ids, lote)
                             continue
                         sdr.consume_guidance([gid for gid, _text in guidance])
                         handover.consumed(conversation_id, through)
+                    fila.finish(external_ids, lote)
                 except Exception:
                     handover.record(conversation_id, uuid.uuid4().hex, "cliente", combined)
+                    fila.finish(external_ids, lote, "erro")
                     logger.exception("Hermes/Evolution batch reply failed for jid=%s", jid)
             if not hermes_pending.get(jid):
                 return
@@ -1198,6 +1293,10 @@ async def owner_test_command(jid: str, command: str) -> None:
 
 
 def queue_hermes_turn(jid: str, content: str, media: list[tuple[bytes, str, str]] | None, source_id: str, conversation_id: int, external_id: str, structured_event: dict[str, Any] | None = None) -> None:
+    try:
+        fila.save_turn(jid, conversation_id, source_id, content, media, external_id, structured_event)  # survives a restart
+    except Exception:
+        logger.exception("Could not persist the turn external_id=%s", external_id)
     sdr.touch_activity(conversation_id, lead=True)
     sdr.cancel_followups(conversation_id, "lead_message")
     hermes_pending[jid].append((content, media, source_id, conversation_id, external_id, structured_event))
