@@ -95,10 +95,12 @@ class RetomadaTests(unittest.TestCase):
     def test_retomadas_have_their_own_80_20(self):
         # Talles 11/10: "uma farm de 80/20 pra abertura e outra de 80/20 pra retomada": utility first, marketing every 5th.
         self.assertEqual(retomada.pick("sem_resposta")["category"], "UTILITY")
-        self.assertIsNone(retomada.pick("conversa"))  # no UTILITY of that family: none goes yet
+        # No UTILITY of that family: it goes in the marketing share opened by the other families' utility ones.
+        self.assertIsNone(retomada.pick("conversa"))  # 0 retomadas today: marketing would be 100%
         day = app.datetime_local(time.time()).strftime("%Y-%m-%d")
         prospeccao.kv_set(f"tpl:{day}:RET_UTILITY", "4")
         self.assertEqual(retomada.pick("sem_resposta")["category"], "MARKETING")
+        self.assertEqual(retomada.pick("conversa")["category"], "MARKETING")  # 4 utility of another family opened the slot
         self.assertTrue(th.is_utility_variant("retomada_robo_u03") and not th.is_utility_variant("retomada_robo_03"))
         self.assertEqual(th.familia_of("retomada_sem_resposta_u01"), "sem_resposta")
 

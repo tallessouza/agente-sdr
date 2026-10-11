@@ -585,7 +585,13 @@ def retomada_pool() -> list[dict[str, Any]]:
 def pick_retomada(familia: str, utility_sent: int, marketing_sent: int, rng: Any = None) -> dict[str, Any] | None:
     """A retomada template of the family by the retomadas' own 80/20 (Talles 11/10), apart from the openings': UTILITY
     while marketing would pass MARKETING_MAX_SHARE of the day's retomadas, MARKETING otherwise; none without a UTILITY one."""
-    options = [t for t in retomada_pool() if t.get("familia") == familia]
+    pool = retomada_pool()
+    options = [t for t in pool if t.get("familia") == familia]
+    if not any(t.get("category") == "UTILITY" for t in options) and any(t.get("category") == "UTILITY" for t in pool):
+        # The 80/20 is of all the retomadas, not of each family: Meta approves "sem_resposta" only as MARKETING (nobody
+        # asked for it), so that family goes in the marketing share the other families' utility ones open (11/10).
+        ok = (marketing_sent + 1) / (utility_sent + marketing_sent + 1) <= MARKETING_MAX_SHARE
+        return pick_weighted([t for t in options if t.get("category") == "MARKETING"], rng) if ok else None
     category = choose_category(options, utility_sent, marketing_sent)
     return pick_weighted([t for t in options if t.get("category") == category], rng) if category else None
 
