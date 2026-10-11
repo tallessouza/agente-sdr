@@ -3,9 +3,15 @@
 "Uns 4 fups de 6 em 6h respeitando o horário de funcionamento, respeitando a janela de 24h; os 4 têm que
 acontecer; se tiver horário de silêncio, diminui a distância entre eles com um intervalo de 2h."
 
-The touches spread over the business's OPEN time between the agent's last message and the end of the 24 h
-window: 6 h apart when there is room, closer when closed hours eat the window, so all 4 always fit. A business
-closed for the whole window falls back to daytime hours (9h–20h).
+And (10/10, 23h40): "intervalo de 2h só se o toque daqui a 6h der fora do expediente da empresa".
+
+And, asked which wins when both cannot hold (4 touches 6 h apart need 24 h; the window is 23 h 30): "os 4 valem mais".
+
+Each touch goes 6 h after the previous one (the first, 6 h after the agent's last message); 2 h after when the 6 h
+mark is outside the business's hours or would leave no room for the touches still to come; at the next opening
+when 2 h is closed too. Only in the business's hours, only between 9h and 20h (when touches go out at all) and
+before the end of the window (30 min before the 24 h close). A business closed for the whole window uses the
+daytime hours (9h–20h) the same way.
 """
 import re
 import unicodedata
@@ -16,8 +22,10 @@ DAYS = {"seg": 0, "ter": 1, "qua": 2, "qui": 3, "sex": 4, "sab": 5, "dom": 6}
 FALLBACK = {d: [(9.0, 20.0)] for d in range(7)}
 TOUCHES = 4
 IDEAL_GAP = 6 * 3600
-MIN_TOUCH_OPEN_SECONDS = 15 * 60  # less open time than this per touch: use the daytime fallback
-END_MARGIN = 30 * 60  # open time left after the last touch, before the window closes
+END_MARGIN = 10 * 60  # time left after the last touch, before the window closes
+# Never closer than this (10/10: the Nóris answered Saturday 18h54, closed Sunday, and got 4 touches 15 min apart).
+MIN_GAP = 2 * 3600
+SEND_START, SEND_END = 9.0, 20.0  # touches only go out in this local time (SDR_BUSINESS_*_HOUR of brain and bridge)
 
 _DAY = r"(?:seg|ter|qua|qui|sex|sab|dom)"
 _RANGE = r"\d{1,2}h\d{0,2}\s*-\s*\d{1,2}h\d{0,2}"
@@ -90,17 +98,63 @@ def _walk(intervals: list[tuple[float, float]], offset: float) -> float:
 
 def touch_times(anchor: float, window_end: float, hours: dict[int, list[tuple[float, float]]] | None, tz: Any,
                 n: int = TOUCHES, ideal_gap: float = IDEAL_GAP) -> list[float]:
-    """n touch moments in open hours between anchor and window_end: ideal_gap apart, closer when needed, never fewer."""
-    if window_end <= anchor:
+    """n touch moments in open hours between anchor and window_end: ideal_gap apart, closer when needed, never under MIN_GAP."""
+    last_ok = window_end - END_MARGIN  # the bridge loop still has time to send the last one
+    if last_ok <= anchor:
         return []
-    intervals = open_intervals(anchor, window_end, hours or FALLBACK, tz)
-    total = sum(b - a for a, b in intervals)
-    if total < n * MIN_TOUCH_OPEN_SECONDS and hours:
-        intervals = open_intervals(anchor, window_end, FALLBACK, tz)
-        total = sum(b - a for a, b in intervals)
-    if total < n * MIN_TOUCH_OPEN_SECONDS:
-        intervals, total = [(anchor, window_end)], window_end - anchor
-    # The last touch keeps END_MARGIN of open time before the window closes, so it can still go out.
-    usable = total - min(END_MARGIN, total * 0.1)
-    gap = min(ideal_gap, usable / n)
-    return [_walk(intervals, gap * k) for k in range(1, n + 1)]
+    tried: list[list[float]] = []
+    # The business's hours first, then the daytime fallback when they cannot hold the n touches.
+    for spec in ([hours] if hours else []) + [FALLBACK]:
+        plan = _plan(anchor, last_ok, open_intervals(anchor, last_ok, _clip(spec), tz), n, ideal_gap)
+        if len(plan) >= n:
+            return plan
+        tried.append(plan)
+    return max(tried, key=len)
+
+
+def _plan(anchor: float, last_ok: float, spans: list[tuple[float, float]], n: int, ideal_gap: float) -> list[float]:
+    """Each touch at 6 h, else 2 h, else the next opening: the first of these that still leaves room for the rest
+    (the 4 touches win over the 6 h, Talles 10/10)."""
+    def is_open(t: float) -> bool:
+        return any(a <= t < b for a, b in spans)
+
+    def next_open(t: float) -> float | None:
+        return next((max(a, t) for a, b in spans if b > t), None)
+
+    def options(previous: float) -> list[float]:
+        out = [previous + g for g in (ideal_gap, MIN_GAP) if previous + g <= last_ok and is_open(previous + g)]
+        fallback = next_open(previous + MIN_GAP)
+        if fallback is not None and fallback <= last_ok:
+            out.append(fallback)
+        return out
+
+    def most_after(previous: float, k: int) -> int:
+        """How many of k touches still fit after `previous` at the tightest pace (2 h, else next opening)."""
+        count = 0
+        while count < k:
+            nxt = options(previous)
+            if not nxt:
+                break
+            previous = min(nxt)
+            count += 1
+        return count
+
+    plan: list[float] = []
+    previous = anchor
+    while len(plan) < n:
+        choices = options(previous)
+        if not choices:
+            break
+        left = n - len(plan) - 1
+        best = max(most_after(c, left) for c in choices)
+        previous = next(c for c in choices if most_after(c, left) == best)
+        plan.append(previous)
+    return plan
+
+
+def _clip(hours: dict[int, list[tuple[float, float]]]) -> dict[int, list[tuple[float, float]]]:
+    """Business hours limited to when touches may go out at all (SEND_START to SEND_END)."""
+    return {d: [(max(a, SEND_START), min(b, SEND_END)) for a, b in ranges if min(b, SEND_END) > max(a, SEND_START)]
+            for d, ranges in hours.items()}
+
+

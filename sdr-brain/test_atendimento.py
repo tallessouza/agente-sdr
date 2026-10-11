@@ -142,5 +142,71 @@ class AtendimentoSequenceTests(unittest.TestCase):
         self.assertEqual(app.atendimento_due_stage(state, anchor, anchor, times[3] + 60, lambda s: s != "d6"), "d6")
 
 
+class TouchSpacingTests(unittest.TestCase):
+    def test_noris_case_never_four_touches_in_one_hour(self):
+        # 10/10: answered Saturday 18:54, open "seg a sáb 8h–20h, dom fechado" -> got 4 touches 15 min apart.
+        import horario
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("America/Sao_Paulo")
+        anchor = datetime(2026, 10, 10, 18, 54, tzinfo=tz).timestamp()
+        times = horario.touch_times(anchor, anchor + 23.5 * 3600, horario.parse_hours("seg a sáb 8h–20h, dom fechado"), tz)
+        self.assertEqual(len(times), 4)
+        self.assertTrue(all(b - a >= horario.MIN_GAP - 1 for a, b in zip([anchor] + times, times)))
+        self.assertLessEqual(times[-1], anchor + 23.5 * 3600)
+
+    def test_window_too_short_drops_touches_instead_of_squeezing_them(self):
+        import horario
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("America/Sao_Paulo")
+        from datetime import datetime
+        hours = {d: [(0.0, 24.0)] for d in range(7)}
+        anchor = datetime(2026, 10, 13, 9, 0, tzinfo=tz).timestamp()
+        times = horario.touch_times(anchor, anchor + 5 * 3600, hours, tz)
+        self.assertEqual(len(times), 2)
+        self.assertTrue(all(b - a >= horario.MIN_GAP - 1 for a, b in zip(times, times[1:])))
+
+    def test_six_hours_unless_the_six_hour_mark_is_closed(self):
+        # Talles, 10/10 23h40: "intervalo de 2h só se o toque daqui a 6h der fora do expediente da empresa".
+        import horario
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("America/Sao_Paulo")
+        anchor = datetime(2026, 10, 12, 14, 0, tzinfo=tz).timestamp()  # Monday 14h, open every day
+        times = horario.touch_times(anchor, anchor + 23.5 * 3600, horario.parse_hours("aberto 24h todos os dias"), tz)
+        # 20h is closed for sending -> 16h; 22h closed -> 18h; 0h and 20h closed -> next opening 9h; 15h is past
+        # the window (13h20) -> 11h.
+        self.assertEqual([datetime.fromtimestamp(t, tz).strftime("%a %H:%M") for t in times], ["Mon 16:00", "Mon 18:00", "Tue 09:00", "Tue 11:00"])
+        # Night reply: the first goes at the opening and the second still gets its 6 h, since the 4 fit.
+        anchor = datetime(2026, 10, 12, 20, 30, tzinfo=tz).timestamp()
+        times = horario.touch_times(anchor, anchor + 23.5 * 3600, horario.parse_hours("seg a sex 8h–20h, sáb e dom fechado"), tz)
+        self.assertEqual([datetime.fromtimestamp(t, tz).strftime("%H:%M") for t in times], ["09:00", "15:00", "17:00", "19:00"])
+        # Morning lead: 6 h would cost a touch, so the 4 win and go 2 h apart.
+        anchor = datetime(2026, 10, 13, 9, 0, tzinfo=tz).timestamp()
+        times = horario.touch_times(anchor, anchor + 23.5 * 3600, horario.parse_hours("seg a sex 8h–20h, sáb e dom fechado"), tz)
+        self.assertEqual([datetime.fromtimestamp(t, tz).strftime("%H:%M") for t in times], ["11:00", "13:00", "15:00", "17:00"])
+
+    def test_window_ends_thirty_minutes_early(self):
+        import app
+        self.assertEqual(app.ATENDIMENTO_WINDOW_SECONDS, 23 * 3600 + 30 * 60)
+
+    def test_robots_keep_getting_touches_and_real_outcomes_stop_them(self):
+        import app
+        self.assertTrue(app.is_robot({"resposta_automatica": "sim"}))
+        self.assertFalse(app.outcome_stops_touches({"resposta_automatica": "sim", "desfecho": "desqualificado"}))
+        self.assertFalse(app.outcome_stops_touches({"atende_com_ia": "sim", "desfecho": "avaliar_dono"}))
+        self.assertTrue(app.outcome_stops_touches({"desfecho": "desqualificado"}))
+        self.assertTrue(app.outcome_stops_touches({"resposta_automatica": "sim", "desfecho": "call_marcada"}))
+        self.assertFalse(app.outcome_stops_touches({}))
+
+    def test_no_touch_within_two_hours_of_the_last_one(self):
+        import app
+        app.record_decision(4242, "2h", 1000.0, 50_000.0, True, "teste")
+        self.assertTrue(app.touch_too_soon(4242, 50_000.0 + 3600))
+        self.assertFalse(app.touch_too_soon(4242, 50_000.0 + 2 * 3600 + 1))
+        app.record_decision(4243, "2h", 1000.0, 50_000.0, False, "não disparou")
+        self.assertFalse(app.touch_too_soon(4243, 50_000.0 + 60))
+
+
 if __name__ == "__main__":
     unittest.main()

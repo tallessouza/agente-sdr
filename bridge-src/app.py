@@ -53,6 +53,9 @@ HERMES_SESSION_PREFIX = os.getenv("HERMES_SESSION_PREFIX", "wa:v13:")
 # Follow-up sending window (local hours, end exclusive); 0-24 sends around the clock.
 SDR_BUSINESS_START_HOUR = int(os.getenv("SDR_BUSINESS_START_HOUR", "9"))
 SDR_BUSINESS_END_HOUR = int(os.getenv("SDR_BUSINESS_END_HOUR", "20"))
+SDR_MIN_TOUCH_GAP_SECONDS = int(os.getenv("SDR_MIN_TOUCH_GAP_SECONDS", "7200"))
+# A robot answering a message of ours within this many seconds is its automatic echo, not a person.
+ROBOT_ECHO_SECONDS = int(os.getenv("ROBOT_ECHO_SECONDS", "45"))
 HERMES_MEDIA_MAX_BYTES = int(os.getenv("HERMES_MEDIA_MAX_BYTES", str(5 * 1024 * 1024)))
 HERMES_MEDIA_ROOT = Path(os.getenv("HERMES_MEDIA_ROOT", "/hermes-data")).resolve()
 HERMES_MEDIA_PREFIX = os.getenv("HERMES_MEDIA_PREFIX", "/opt/data").rstrip("/")
@@ -1329,10 +1332,14 @@ async def process_followups_once(now: float | None = None) -> None:
         try:
             if await handover.paused(conv): sdr.update_followup(fid,"cancelled","paused"); continue
         except Exception: continue
+        if sdr.outcome_stops_touches(conv): sdr.update_followup(fid,"cancelled","desfecho"); continue
         with sdr.connect() as c:
-            if c.execute("SELECT 1 FROM sdr_records WHERE conversation=? AND field='desfecho'",(conv,)).fetchone(): sdr.update_followup(fid,"cancelled","desfecho"); continue
             touches = c.execute("SELECT COUNT(*) FROM sdr_followups WHERE conversation=? AND status='sent' AND sent_at>=?",(conv, day_start)).fetchone()[0]
+            last_sent = c.execute("SELECT MAX(sent_at) FROM sdr_followups WHERE conversation=? AND status='sent'",(conv,)).fetchone()[0] or 0
         if touches >= 4: sdr.update_followup(fid,"cancelled","daily_cap"); continue
+        # Never two touches closer than 2 h (10/10: the Nóris got 4 in 4 minutes); it waits, and the window check
+        # above cancels it if the wait runs past the 24 h window.
+        if cloud.is_cloud(contact[0]) and now - float(last_sent) < SDR_MIN_TOUCH_GAP_SECONDS: continue
         if local.hour < SDR_BUSINESS_START_HOUR or local.hour >= SDR_BUSINESS_END_HOUR: continue
         leaks = sdr.leaked_terms([text])
         if leaks:
@@ -1350,7 +1357,7 @@ async def process_followups_once(now: float | None = None) -> None:
             await agent_presence(contact[0], "composing")
             await asyncio.sleep(sdr.typing_seconds(text))
             if cloud.is_cloud(contact[0]):
-                await cloud.post_message(conv, text)
+                await cloud.post_message(conv, text, attributes={"bridge_followup": True})
             else:
                 await send_evolution(jid_number(contact[0]), text, retry=True)  # retry=True: no outbox copy
                 await add_chatwoot_message(contact[1], conv, text, outgoing=True, suppress_evolution=True)
@@ -2164,6 +2171,16 @@ async def cloud_inbox_event(payload: dict[str, Any]) -> None:
     # Chatwoot already stored the raw text; the agent and the brain only ever see the mark.
     content, _secret = sdr.redact_credentials(content)
     prospeccao.replied(jid)
+    if sdr.robot_echo(conversation_id, content, echo_seconds=ROBOT_ECHO_SECONDS):
+        # The robot answering one of our messages again: it stays in Chatwoot and in the turn log, but the agent
+        # does not talk to it (no loop) and it does not count as the lead speaking (the touches go on).
+        try:
+            fila.save_turn(jid, conversation_id, source_id, content, None, external_id, None)
+            fila.finish([external_id], status="eco_robo")
+        except Exception:
+            logger.exception("Could not log the robot echo conversation=%s", conversation_id)
+        logger.info("Robot echo not sent to the agent conversation=%s", conversation_id)
+        return
     logger.info("Official inbox message conversation=%s media=%d", conversation_id, len(media))
     queue_hermes_turn(jid, content, media or None, source_id, conversation_id, external_id, None)
 

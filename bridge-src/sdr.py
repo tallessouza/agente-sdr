@@ -590,3 +590,49 @@ def session_suffix(jid: str) -> str:
 
 def is_owner(jid: str) -> bool:
     return jid.split("@", 1)[0].split(":", 1)[0] in OWNER_IDS
+
+
+# --- robots on the other side (Talles, 10/10: "fup pra quem conversou e parou, mesmo que bot") -------------
+# The touches of a robot conversation speak to whoever reads the WhatsApp later; its outcome does not stop them.
+ROBOT_OUTCOMES = {"desqualificado", "avaliar_dono"}
+
+
+def records_of(conversation: int) -> dict[str, str]:
+    with connect() as c:
+        return dict(c.execute("SELECT field, value FROM sdr_records WHERE conversation=? ORDER BY created", (conversation,)).fetchall())
+
+
+def robot_records(records: dict[str, Any]) -> bool:
+    return any(str(records.get(k) or "").strip().lower() == "sim" for k in ("atende_com_ia", "resposta_automatica"))
+
+
+def is_robot(conversation: int) -> bool:
+    return robot_records(records_of(conversation))
+
+
+def outcome_stops_touches(conversation: int) -> bool:
+    records = records_of(conversation)
+    outcome = str(records.get("desfecho") or "").strip().lower()
+    return bool(outcome) and not (robot_records(records) and outcome in ROBOT_OUTCOMES)
+
+
+def last_outbound_ts(conversation: int) -> float:
+    """Our last message of any kind: the agent's reply or a touch."""
+    with connect() as c:
+        touch = c.execute("SELECT MAX(sent_at) FROM sdr_followups WHERE conversation=? AND status='sent'", (conversation,)).fetchone()[0]
+    return max(float(touch or 0), float(activity(conversation)[1] or 0))
+
+
+def robot_echo(conversation: int, content: str, now: float | None = None, echo_seconds: int = 45) -> bool:
+    """In a robot conversation the agent already answered, a message right after one of ours (or the same text the
+    robot sent before) is the robot again: it stays in the history but the agent does not answer it."""
+    if not is_robot(conversation) or not activity(conversation)[1]:
+        return False
+    now = time.time() if now is None else now
+    if now - last_outbound_ts(conversation) <= echo_seconds:
+        return True
+    folded = " ".join(str(content or "").lower().split())
+    with connect() as c:
+        has_turnos = c.execute("SELECT 1 FROM sqlite_master WHERE name='turnos'").fetchone()
+        earlier = [r[0] for r in c.execute("SELECT content FROM turnos WHERE conversation=?", (conversation,))] if has_turnos else []
+    return len(folded) > 20 and any(" ".join(str(t or "").lower().split()) == folded for t in earlier)

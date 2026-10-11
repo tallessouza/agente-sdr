@@ -113,12 +113,13 @@ def _account(path: str) -> str:
 
 
 async def post_message(conversation_id: int, content: str, media: tuple[bytes, str, str] | None = None,
-                       template: dict[str, Any] | None = None) -> dict[str, Any]:
+                       template: dict[str, Any] | None = None, attributes: dict[str, Any] | None = None) -> dict[str, Any]:
     """Outgoing message on the official inbox; Chatwoot delivers it through the Cloud API.
 
-    The bridge marks its own messages so the Chatwoot webhook never mistakes them for a human takeover.
+    The bridge marks its own messages so the Chatwoot webhook never mistakes them for a human takeover
+    (`attributes` adds marks, e.g. bridge_followup on a touch).
     """
-    attributes = {"skip_evolution_bridge": True, "bridge_agent": True}
+    attributes = {**(attributes or {}), "skip_evolution_bridge": True, "bridge_agent": True}
     endpoint = _account(f"/conversations/{conversation_id}/messages")
     async with httpx.AsyncClient(timeout=60) as client:
         if media:

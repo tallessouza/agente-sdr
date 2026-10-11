@@ -157,7 +157,8 @@ def patrol_findings(messages: list[dict[str, Any]], robot: bool = False) -> list
             for reason in error_violations([m.get("content", "")]):
                 findings.append(("texto interno vazou", reason, str(m["id"])))
     if robot:
-        turns = agent_turns(messages)
+        # Touches (bridge_followup) are spaced 2 h apart and speak to the owner: they are not talking to the robot.
+        turns = [t for t in agent_turns(messages) if not all((m.get("content_attributes") or {}).get("bridge_followup") for m in t)]
         if len(turns) > 2:  # the test and one colleague message (in short parts), then silence
             findings.append(("seguiu conversando com robô", f"{len(turns)} turnos nossos numa conversa com robô", str(turns[-1][-1]["id"])))
     return findings

@@ -45,8 +45,14 @@ POST_PRICE_STAGE = ("d4", 345600)
 # from horario.touch_times: 4 touches inside the 24 h window, 6 h apart in the business's open hours, closer
 # when closed hours eat the window (Talles, 10/10). The delays below are only the nominal spacing.
 ATENDIMENTO_STAGES = [("2h", 6 * 3600), ("d1", 12 * 3600), ("d3", 18 * 3600), ("d6", 24 * 3600)]
-# Touches end before the official number's 24 h window closes (the bridge drops free text after 23 h 30).
-ATENDIMENTO_WINDOW_SECONDS = int(os.getenv("SDR_ATENDIMENTO_WINDOW_SECONDS", str(23 * 3600)))
+# Touches end 30 min before the official number's 24 h window closes ("sempre considerando a janela com 30 min
+# antes de acabar", Talles 10/10); the bridge drops free text after the same 23 h 30.
+ATENDIMENTO_WINDOW_SECONDS = int(os.getenv("SDR_ATENDIMENTO_WINDOW_SECONDS", str(23 * 3600 + 30 * 60)))
+# Two touches never go out closer than this, whatever the stage (10/10: the Nóris got 4 in 4 minutes).
+MIN_TOUCH_GAP_SECONDS = int(os.getenv("SDR_MIN_TOUCH_GAP_SECONDS", str(2 * 3600)))
+# A robot (menu, automatic greeting) answered the test: its outcome does not stop the touches, which speak to
+# whoever reads the WhatsApp later, the owner ("fup pra quem conversou e parou, mesmo que bot", Talles 10/10).
+ROBOT_OUTCOMES = {"desqualificado", "avaliar_dono"}
 # No touch of any kind right after the agent spoke (10/10: a same-day "next step" fired 41 s after the reveal).
 MIN_SILENCE_SECONDS = int(os.getenv("SDR_MIN_SILENCE_SECONDS", "7200"))
 
@@ -405,6 +411,26 @@ def record_decision(conversation_id: int, stage: str, anchor: float, now: float,
         conn.commit()
 
 
+def last_touch_ts(conversation_id: int) -> float:
+    """When the last touch of any stage was decided to go out in this conversation (0 if never)."""
+    with closing(connection()) as conn:
+        row = conn.execute("SELECT MAX(ts) FROM decisions WHERE conversation_id=? AND disparar=1", (conversation_id,)).fetchone()
+    return float(row[0] or 0)
+
+
+def touch_too_soon(conversation_id: int, now: float) -> bool:
+    return now - last_touch_ts(conversation_id) < MIN_TOUCH_GAP_SECONDS
+
+
+def is_robot(records: dict[str, Any]) -> bool:
+    return any(str(records.get(k) or "").strip().lower() == "sim" for k in ("atende_com_ia", "resposta_automatica"))
+
+
+def outcome_stops_touches(records: dict[str, Any]) -> bool:
+    desfecho = str(records.get("desfecho") or "").strip().lower()
+    return bool(desfecho) and not (is_robot(records) and desfecho in ROBOT_OUTCOMES)
+
+
 def previous_touches(conversation_id: int, anchor: float) -> list[dict[str, Any]]:
     with closing(connection()) as conn:
         rows = conn.execute("SELECT stage, disparar, motivo FROM decisions WHERE conversation_id=? AND anchor=? ORDER BY ts", (conversation_id, anchor)).fetchall()
@@ -590,15 +616,18 @@ async def followup_once(now: float | None = None) -> None:
         seq = sequence(conversation_id)
         active = seq is not None and seq[1] is None
         if records.get("objecao") and str(records.get("opt_out") or "").strip().lower() != "sim" and not state.get("paused") \
+                and not touch_too_soon(conversation_id, current) \
                 and official(state) and (oferta.current_offer(state.get("context") or {}) or records.get("oferta")) == "atendimento":
             # "Não faz sentido pra nós" is an objection, not a stop (Talles, 10/10): one touch the next day to
             # find out why, then the sequence is over unless the lead answers.
             await objection_touch(conversation_id, state, records, current, local_state)
             continue
-        if state.get("paused") or records.get("desfecho"):
+        if state.get("paused") or outcome_stops_touches(records):
             if active:
                 end_sequence(conversation_id, current, "pausada" if state.get("paused") else "desfecho")
             continue
+        if official(state) and touch_too_soon(conversation_id, current):
+            continue  # official number: 2 h at least between any two touches (the Instalador keeps its 5 min cadence)
         last_agent = float(state.get("last_agent_ts") or local_state.get("last_agent_ts") or 0)
         last_lead = float(state.get("last_lead_ts") or 0)
         # Besides silence, the date of the agreed next step triggers a touch
@@ -661,6 +690,7 @@ async def followup_once(now: float | None = None) -> None:
             "proximo_passo": {"texto": records.get("proximo_passo"), "ate": records.get("proximo_passo_em")},
             "evento_critico": records.get("evento_critico"),
             "sequencia": {"lead_respondeu_durante": replied_during, "toques_anteriores": previous_touches(conversation_id, anchor)},
+            "robo": is_robot(records),
             "transcript": transcript, "lead": state.get("lead", {}), "state": state,
         }
         result = await ask_llm(prompt("fup.md") + "\nCONTEXTO:\n" + json.dumps(context, ensure_ascii=False)) or {"disparar": False, "motivo": "review_unavailable"}
