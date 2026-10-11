@@ -23,6 +23,7 @@ from typing import Any
 
 import httpx
 
+import farm_decisoes
 import templates_db
 
 logger = logging.getLogger("bridge.templates")
@@ -211,7 +212,7 @@ async def graph(method: str, path: str, body: dict[str, Any] | None = None) -> d
 
 
 async def list_templates() -> list[dict[str, Any]]:
-    data = await graph("GET", f"{WABA}/message_templates?fields=id,name,status,category,language,components,quality_score&limit=500")
+    data = await graph("GET", f"{WABA}/message_templates?fields=id,name,status,category,language,components,quality_score,rejected_reason&limit=500")
     return data.get("data") or []
 
 
@@ -310,6 +311,7 @@ async def trim_retomada_marketing(templates: list[dict[str, Any]]) -> list[str]:
         try:
             await graph("DELETE", f"{WABA}/message_templates?name={t['name']}&hsm_id={t['id']}")
             deleted.append(t["name"])
+            farm_decisoes.registrar("apagar_marketing_excedente", t["name"], f"retomada: {len(utility)} utility permitem {allowed} marketing; ficaram {sorted(keep)}")
         except Exception as exc:
             logger.warning("Retomada marketing template %s not deleted: %s", t["name"], exc)
     return deleted
@@ -340,6 +342,7 @@ async def trim_marketing(templates: list[dict[str, Any]], meta: dict[str, Any]) 
         try:
             await graph("DELETE", f"{WABA}/message_templates?name={t['name']}&hsm_id={t['id']}")
             deleted.append(t["name"])
+            farm_decisoes.registrar("apagar_marketing_excedente", t["name"], f"abertura: {utility} utility permitem {allowed} marketing")
         except Exception as exc:
             logger.warning("Marketing template %s not deleted: %s", t["name"], exc)
     return deleted
@@ -359,6 +362,7 @@ async def submit(batch: list[dict[str, Any]], meta: dict[str, Any]) -> list[str]
         placar = meta["placar"].setdefault(b["info"]["scheme"], {})
         placar["enviados"] = placar.get("enviados", 0) + 1
         sent.append(b["template"]["name"])
+        farm_decisoes.registrar("pedir_abertura", b["template"]["name"], "pedido à Meta como UTILITY")
     return sent
 
 
@@ -393,6 +397,27 @@ async def guard_number() -> dict[str, Any]:
             "status": number.get("status"), "alarme": alarm}
 
 
+async def clean_rejected(templates: list[dict[str, Any]], meta: dict[str, Any]) -> list[str]:
+    """Rejected opening and retomada templates (11/10: six pergunta_var with INVALID_FORMAT, the variables almost side
+    by side): Meta's reason goes to the card and to meta["recusados"] (the text is never asked again, it is in
+    "usados"), and the template is deleted, so the list shows only what can be used or is still under review."""
+    deleted = []
+    for t in templates:
+        if t.get("status") != "REJECTED" or tipo_of(t.get("name", ""), meta) not in {"abertura", "retomada"}:
+            continue
+        reason = str(t.get("rejected_reason") or "sem motivo")
+        meta.setdefault("recusados", {})[t["name"]] = {"motivo": reason, "texto": body_of(t)[:300], "ts": time.time()}
+        if body_of(t) and body_of(t) not in meta["usados"]:
+            meta["usados"].append(body_of(t))
+        try:
+            await graph("DELETE", f"{WABA}/message_templates?name={t['name']}&hsm_id={t['id']}")
+            deleted.append(t["name"])
+            farm_decisoes.registrar("apagar_rejeitado", t["name"], f"recusado pela Meta: {reason}", confianca=f"motivo da Meta: {reason}")
+        except Exception as exc:
+            logger.warning("Rejected template %s not deleted: %s", t["name"], exc)
+    return deleted
+
+
 async def check_once(sync_chatwoot: Any = None) -> dict[str, Any]:
     try:
         numero = await guard_number()
@@ -404,6 +429,7 @@ async def check_once(sync_chatwoot: Any = None) -> dict[str, Any]:
     learn(templates, meta)
     edited = await edit_baits(templates, meta)
     deleted = await trim_marketing(templates, meta)
+    deleted += await clean_rejected(templates, meta)
     if deleted or edited:
         templates = await list_templates()
     save_meta(meta)  # the rows must exist before Meta's view of them is stored
@@ -561,6 +587,7 @@ async def submit_retomada(name: str, familia: str, text: str, example: list[str]
     except Exception as exc:
         logger.warning("Retomada template %s not submitted: %s", name, exc)
         return False
+    farm_decisoes.registrar(f"pedir_retomada_{category.lower()}", name, f"pedido à Meta como {category} ({familia})")
     meta["templates"][name] = {"scheme": "retomada", "tipo": "retomada", "familia": familia, "params": ["p1", "p2", "p3"],
                                "estado": "pronto", "submetido": time.time(), "pedido": category}
     return True
@@ -592,6 +619,8 @@ async def ensure_retomadas(templates: list[dict[str, Any]], meta: dict[str, Any]
             if await submit_retomada(v["name"], familia, v["text"], v["example"], meta, "UTILITY"):
                 submitted.append(v["name"])
                 tried[f"{today}:{familia}"] = 1
+                if recategorized >= RETOMADA_UTILITY_GIVE_UP:
+                    farm_decisoes.registrar("insistir_utility", v["name"], f"{recategorized} utility de {familia} já voltaram marketing; redação nova")
                 left -= 1
         healthy = [t for t in templates if familia_of(t.get("name", "")) == familia and t.get("category") == "MARKETING"
                    and (t.get("status") == "PENDING" or (t.get("status") == "APPROVED" and health(t) not in {"RED", "YELLOW"}))]

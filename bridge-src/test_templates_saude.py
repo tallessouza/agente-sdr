@@ -166,6 +166,30 @@ class TemplateDbTests(unittest.TestCase):
         with patch.object(th, "graph", new=graph):
             self.assertEqual(asyncio.run(th.trim_retomada_marketing([t for t in templates if t["category"] == "MARKETING"])), [])
 
+    def test_rejected_are_cleaned_with_a_decision_card(self):
+        # Talles 11/10: "bota isso no sistema de farm, toda decisão tem que passar pelo método IP".
+        import farm_decisoes
+        meta = th.load_meta()
+        meta["templates"]["pergunta_var_039"] = {"scheme": "pergunta_var", "params": ["saudacao_min", "pergunta"], "estado": "pronto"}
+        templates = [{"id": "39", "name": "pergunta_var_039", "status": "REJECTED", "category": "MARKETING", "rejected_reason": "INVALID_FORMAT",
+                      "components": [{"type": "BODY", "text": "Oii, {{1}}! {{2}}? Queria uma informação."}]},
+                     {"id": "40", "name": "hello_world", "status": "REJECTED", "category": "UTILITY", "components": []}]
+        calls = []
+
+        async def graph(method, path, body=None):
+            calls.append((method, path))
+            return {}
+
+        with patch.object(th, "graph", new=graph):
+            deleted = asyncio.run(th.clean_rejected(templates, meta))
+        self.assertEqual(deleted, ["pergunta_var_039"])                      # not ours (hello_world) stays
+        self.assertEqual(meta["recusados"]["pergunta_var_039"]["motivo"], "INVALID_FORMAT")
+        self.assertIn("Oii, {{1}}! {{2}}? Queria uma informação.", meta["usados"])  # never asked again
+        card = farm_decisoes.recentes(5)[0]
+        self.assertEqual((card["acao"], card["alvo"]), ("apagar_rejeitado", "pergunta_var_039"))
+        self.assertTrue(all(card["cartao"].get(k) for k in ("objetivo", "alternativas", "impacto", "irreversivel", "rollback", "confianca")))
+        self.assertIn("INVALID_FORMAT", card["cartao"]["confianca"])
+
     def test_health_report_counts_sends_failures_and_replies(self):
         meta = th.load_meta()
         meta["templates"]["vencedor_001"] = {"scheme": "vencedor", "params": ["saudacao_min"], "estado": "pronto"}
