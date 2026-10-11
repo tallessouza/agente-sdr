@@ -72,6 +72,20 @@ class RegraToquesTests(unittest.TestCase):
         self.assertTrue("Tue 17:00" <= shown[0] < "Tue 18:00", shown)  # slid back to before it closes
         self.assertTrue(shown[1].startswith("Wed"), shown)
 
+    def test_retomadas_at_the_next_opening_spread_per_lead(self):
+        # Talles 11/10: "espalhar no expediente": the ones that fall at the next opening do not all go at 9h.
+        opened = ts(2026, 10, 13, 15, 0)
+        firsts = set()
+        for i in range(30):
+            numero = f"55480000002{i:02d}"
+            leads.save(numero, {"nome": f"N {i}", "horario_google": WEEKDAYS_8_18})
+            slots = retomada.slot_times(numero, opened)
+            self.assertEqual(len(slots), 3)
+            self.assertTrue(all(b - a >= 2 * 3600 for a, b in zip([opened] + slots, slots)))
+            self.assertTrue(all(8 <= datetime.fromtimestamp(s, sdr.BUSINESS_TZ).hour < 18 for s in slots))
+            firsts.add(hm(slots[1]))
+        self.assertGreater(len(firsts), 5, firsts)  # Wednesday's ones are not all at the opening
+
     def test_default_hours_without_data(self):
         slots = retomada.slot_times("5548000000999", ts(2026, 10, 13, 9, 30))  # nothing on file: weekdays 9h–18h
         shown = [hm(s) for s in slots]

@@ -99,7 +99,7 @@ def _walk(intervals: list[tuple[float, float]], offset: float) -> float:
 
 
 def touch_times(anchor: float, window_end: float, hours: dict[int, list[tuple[float, float]]] | None, tz: Any,
-                n: int = TOUCHES, ideal_gap: float = IDEAL_GAP, holidays: Any = ()) -> list[float]:
+                n: int = TOUCHES, ideal_gap: float = IDEAL_GAP, holidays: Any = (), seed: int | None = None) -> list[float]:
     """n touch moments in open hours between anchor and window_end: ideal_gap apart, closer when needed, never under MIN_GAP."""
     """n touch moments: each 6 h after the previous one, 2 h after when the 6 h mark falls outside the business's
     hours, at the next opening when that is closed too. `window_end` no longer limits the plan: what falls inside
@@ -115,7 +115,7 @@ def touch_times(anchor: float, window_end: float, hours: dict[int, list[tuple[fl
     horizon = anchor + HORIZON
     for spec in ([hours] if hours else []) + [FALLBACK]:
         spans = open_intervals(anchor, horizon, _clip(spec), tz, holidays)
-        plan = _plan(anchor, horizon, spans, n, ideal_gap)
+        plan = _plan(anchor, horizon, spans, n, ideal_gap, seed)
         if len(plan) >= n:
             return plan
     return plan
@@ -126,7 +126,7 @@ CADENCE_AFTER_OPENING = 3600  # one hour after the business opens
 
 
 def cadence_times(after: float, hours: dict[int, list[tuple[float, float]]] | None, tz: Any, holidays: Any = (),
-                  n: int = CADENCE_TOUCHES) -> list[float]:
+                  n: int = CADENCE_TOUCHES, seed: int | None = None) -> list[float]:
     """The daily cadence after the 4 touches (Talles 11/10: "cadência diária dos próximos dias durante a semana"): one
     touch per working day (Monday to Friday, not a holiday) after `after`, an hour after the business opens (9h–20h);
     a weekday the business is closed is skipped. Up to 14 days ahead."""
@@ -142,6 +142,7 @@ def cadence_times(after: float, hours: dict[int, list[tuple[float, float]]] | No
             continue
         open_h, close_h = spans[0]
         when = min((day + timedelta(hours=open_h)).timestamp() + CADENCE_AFTER_OPENING, (day + timedelta(hours=close_h)).timestamp() - 1800)
+        when += spread(seed and seed + day.day, (day + timedelta(hours=close_h)).timestamp() - 3600 - when)
         if when > after:
             out.append(when)
         if len(out) >= n:
@@ -176,7 +177,18 @@ def _fit(anchor: float, end: float, spans: list[tuple[float, float]], n: int, id
     return plan
 
 
-def _plan(anchor: float, horizon: float, spans: list[tuple[float, float]], n: int, ideal_gap: float) -> list[float]:
+SPREAD_MAX = 4 * 3600  # how far into the business day a touch at an opening may be pushed (Talles 11/10: espalhar no expediente)
+
+
+def spread(seed: int | None, room: float) -> float:
+    """A fixed offset per conversation in [0, room): touches that would all go when the businesses open spread over
+    the morning instead of piling up at 9h (11/10: ~90 templates on Tuesday 9h–11h)."""
+    if not seed or room <= 0:
+        return 0.0
+    return (int(seed) * 2654435761 % 997) / 997 * min(room, SPREAD_MAX)
+
+
+def _plan(anchor: float, horizon: float, spans: list[tuple[float, float]], n: int, ideal_gap: float, seed: int | None = None) -> list[float]:
     def is_open(t: float) -> bool:
         return any(a <= t < b for a, b in spans)
 
@@ -189,6 +201,9 @@ def _plan(anchor: float, horizon: float, spans: list[tuple[float, float]], n: in
         when = next((previous + g for g in (ideal_gap, MIN_GAP) if is_open(previous + g)), None)
         if when is None:
             when = next_open(previous + MIN_GAP)
+            if when is not None and seed:  # at an opening: spread over the day (still before closing, 1 h of margin)
+                end = next((b for a, b in spans if a <= when < b), when)
+                when += spread(seed + len(plan), end - when - 3600)
         if when is None or when > horizon:
             break
         plan.append(when)

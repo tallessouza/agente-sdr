@@ -10,6 +10,7 @@ together with the first contacts. One per working day, RETOMADA_MAX in total, on
 """
 import json
 import os
+import zlib
 from datetime import datetime
 import random
 import sqlite3
@@ -75,6 +76,12 @@ def _first_open(t: float, end: float, spans: list[tuple[float, float]]) -> float
     return next((max(a, t) for a, b in spans if b > t and max(a, t) <= end), None)
 
 
+def spread(seed: int, room: float) -> float:
+    """A fixed offset per lead in [0, room), at most 4 h: retomadas that fall at the next opening spread over the
+    morning instead of piling up when the businesses open (Talles 11/10: espalhar no expediente)."""
+    return (int(seed) * 2654435761 % 997) / 997 * min(max(room, 0.0), 4 * 3600) if seed else 0.0
+
+
 def _fits(t: float, end: float, spans: list[tuple[float, float]], n: int) -> bool:
     for _ in range(n):
         t = _first_open(t + MIN_GAP, end, spans)
@@ -100,8 +107,10 @@ def slot_times(numero: str, opened: float) -> list[float]:
                     break
             if chosen is None:
                 first = _first_open(previous + MIN_GAP, end, spans)
-                if first is not None and _fits(first, end, spans, left - 1):
-                    chosen = first
+                if first is not None:
+                    span_end = next((b for a, b in spans if a <= first < b), first)
+                    shifted = first + spread(zlib.crc32(numero.encode()) + len(out), span_end - first - 3600)
+                    chosen = next((t for t in (shifted, first) if _fits(t, end, spans, left - 1)), None)
             if chosen is None:
                 break
             out.append(chosen)

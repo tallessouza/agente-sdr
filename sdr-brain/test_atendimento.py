@@ -300,5 +300,24 @@ class FourInsideTheWindowTests(unittest.TestCase):
         self.assertTrue(all(8 <= datetime.fromtimestamp(x, tz).hour < 18 for x in times), fmt)  # inside the business hours
         self.assertTrue(all(horario.touch_channel(x, lead + 23.5 * 3600) == "texto" for x in times), fmt)
 
+
+class SpreadTests(unittest.TestCase):
+    def test_touches_at_an_opening_spread_over_the_morning(self):
+        # Talles 11/10: ~90 templates fell at Tuesday 9h-11h; spread them over the business day, per conversation.
+        import horario
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("America/Sao_Paulo")
+        shop = horario.parse_hours("seg a sex 8h–18h, sáb e dom fechado")
+        anchor = datetime(2026, 10, 10, 20, 25, tzinfo=tz).timestamp()  # Saturday night, the window closes Sunday
+        plain = horario.cadence_times(anchor, shop, tz, holidays={"2026-10-12"})
+        firsts = {horario.cadence_times(anchor, shop, tz, holidays={"2026-10-12"}, seed=s)[0] for s in range(1, 40)}
+        self.assertGreater(len(firsts), 10)                                  # different conversations, different times
+        self.assertEqual(horario.cadence_times(anchor, shop, tz, holidays={"2026-10-12"}), plain)  # no seed: unchanged
+        for s in range(1, 40):
+            times = horario.cadence_times(anchor, shop, tz, holidays={"2026-10-12"}, seed=s)
+            self.assertTrue(all(8 <= datetime.fromtimestamp(x, tz).hour < 18 for x in times))
+            self.assertTrue(all(datetime.fromtimestamp(x, tz).weekday() < 5 for x in times))
+
 if __name__ == "__main__":
     unittest.main()

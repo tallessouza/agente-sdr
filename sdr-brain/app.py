@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import zlib
 import logging
 import os
 import re
@@ -359,9 +360,10 @@ def atendimento_touch_times(state: dict[str, Any], anchor: float, last_lead: flo
     window_end = (last_lead or anchor) + ATENDIMENTO_WINDOW_SECONDS
     holidays = set((((state.get("context") or {}).get("ofertas") or {}).get("atendimento") or {}).get("feriados") or [])
     hours = horario.parse_hours(negocio.get("horario_resumo"))
-    times = horario.touch_times(anchor, window_end, hours, BUSINESS_TZ, holidays=holidays)
+    seed = zlib.crc32(str(state.get("jid") or "").encode()) or None  # spreads the touches that fall at an opening
+    times = horario.touch_times(anchor, window_end, hours, BUSINESS_TZ, holidays=holidays, seed=seed)
     # After the 4 touches, one a working day for the next days (always templates: the window is long closed).
-    return times + (horario.cadence_times(times[-1], hours, BUSINESS_TZ, holidays) if len(times) == 4 else [])
+    return times + (horario.cadence_times(times[-1], hours, BUSINESS_TZ, holidays, seed=seed) if len(times) == 4 else [])
 
 
 def official(state: dict[str, Any]) -> bool:
