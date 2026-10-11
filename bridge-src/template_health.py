@@ -464,6 +464,7 @@ RETOMADA_FECHA = ["Topa ver em 20 minutos com o Talles como isso fica resolvido,
 # plain note about the test or the conversation, without a sales close, and the argument stays in {{3}}. Meta decides
 # the category on approval: one that comes back MARKETING counts as marketing. Names end in _uNN.
 RETOMADA_UTILITY_TARGET = int(os.getenv("RETOMADA_UTILITY_TARGET", "4"))
+RETOMADA_UTILITY_GIVE_UP = int(os.getenv("RETOMADA_UTILITY_GIVE_UP", "3"))  # utility asks Meta turned MARKETING before giving up
 RETOMADA_UTILITY_SKELETONS = {
     "sem_resposta": ["{abre}, {{{{1}}}}. {sou} {{{{2}}}} fiz um teste de atendimento no WhatsApp de vocês. {{{{3}}}} {fecha}",
                      "{abre}, {{{{1}}}}. {sou} {{{{2}}}} mandei uma mensagem de teste para o atendimento de vocês. {{{{3}}}} {fecha}"],
@@ -541,6 +542,12 @@ async def ensure_retomadas(templates: list[dict[str, Any]], meta: dict[str, Any]
         healthy_u = [t for t in templates if familia_of(t.get("name", "")) == familia and is_utility_variant(t.get("name", ""))
                      and (t.get("status") == "PENDING" or (t.get("status") == "APPROVED" and t.get("category") == "UTILITY" and health(t) not in {"RED", "YELLOW"}))]
         need = min(max(0, RETOMADA_UTILITY_TARGET - len(healthy_u)), left)
+        recategorized = sum(1 for t in templates if familia_of(t.get("name", "")) == familia and is_utility_variant(t.get("name", ""))
+                            and t.get("status") == "APPROVED" and t.get("category") == "MARKETING")
+        if recategorized >= RETOMADA_UTILITY_GIVE_UP:
+            # 11/10: Meta approved all 4 "sem_resposta" utility asks as MARKETING (nobody asked for that message). Asking
+            # again only piles up recategorizations, which Meta treats as repeat offence: stop asking for this family.
+            need = 0
         for v in new_retomada_variants(familia, need, templates, meta, utility=True):
             if await submit_retomada(v["name"], familia, v["text"], v["example"], meta, "UTILITY"):
                 submitted.append(v["name"])

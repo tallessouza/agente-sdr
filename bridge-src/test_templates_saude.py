@@ -115,6 +115,24 @@ class TemplateDbTests(unittest.TestCase):
             self.assertEqual(asyncio.run(th.ensure_retomadas(templates, meta)), [])  # the day's cap is spent
         self.assertEqual({t["name"] for t in th.retomada_pool()}, set(th.RETOMADAS))  # only approved ones are usable
 
+    def test_retomada_farm_stops_asking_utility_that_meta_turns_marketing(self):
+        meta = th.load_meta()
+        body = lambda text: [{"type": "BODY", "text": text}]
+        templates = [{"name": f"retomada_sem_resposta_u0{i}", "status": "APPROVED", "category": "MARKETING", "components": body(f"Oi, {{{{1}}}}. {i} {{{{2}}}} x. {{{{3}}}} y.")}
+                     for i in range(1, 4)]
+        templates += [tpl(name, category="MARKETING", score="GREEN", text=text) for name, (_f, text, _e) in th.RETOMADAS.items()]
+        posted = []
+
+        async def graph(method, path, body=None):
+            posted.append(body)
+            return {"id": "1"}
+
+        with patch.object(th, "graph", new=graph):
+            asyncio.run(th.ensure_retomadas(templates, meta))
+        asked = [b["name"] for b in posted if b["category"] == "UTILITY"]
+        self.assertFalse(any(n.startswith("retomada_sem_resposta_u") for n in asked), asked)  # 3 turned MARKETING: gave up
+        self.assertTrue(any(n.startswith("retomada_conversa_u") for n in asked), asked)       # other families still farmed
+
     def test_health_report_counts_sends_failures_and_replies(self):
         meta = th.load_meta()
         meta["templates"]["vencedor_001"] = {"scheme": "vencedor", "params": ["saudacao_min"], "estado": "pronto"}
