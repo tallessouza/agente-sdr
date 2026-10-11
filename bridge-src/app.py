@@ -1943,6 +1943,16 @@ async def sdr_retomada_candidates(request: Request):
     if (e:=_sdr_auth(request)): return e
     return {"candidatos": retomada.candidates()}
 
+@app.get("/sdr/retomada/template")
+async def sdr_retomada_template(familia: str, request: Request):
+    """An approved retomada template of the family, for a touch of the sequence that falls after the window."""
+    if (e:=_sdr_auth(request)): return e
+    options = [t for t in template_health.retomada_pool() if t.get("familia") == familia]
+    if not options:
+        return JSONResponse({"detail": "nenhum template aprovado dessa família"}, 404)
+    template = random.choice(options)
+    return {"name": template["name"], "text": template["text"]}
+
 @app.post("/sdr/retomadas")
 async def sdr_retomada_schedule(request: Request):
     if (e:=_sdr_auth(request)): return e

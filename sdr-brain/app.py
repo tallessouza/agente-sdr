@@ -350,10 +350,11 @@ def due_stage(age: float, post_price: bool, offer: str | None = None) -> str | N
 
 
 def atendimento_touch_times(state: dict[str, Any], anchor: float, last_lead: float) -> list[float]:
-    """The 4 attendant touches: inside the 24 h window opened by the lead, in the business's open hours."""
+    """The 4 attendant touches in the business's open hours (holidays closed); text inside the window, template after."""
     negocio = (((state.get("lead") or {}).get("origem") or {}).get("negocio") or {})
     window_end = (last_lead or anchor) + ATENDIMENTO_WINDOW_SECONDS
-    return horario.touch_times(anchor, window_end, horario.parse_hours(negocio.get("horario_resumo")), BUSINESS_TZ)
+    holidays = set((((state.get("context") or {}).get("ofertas") or {}).get("atendimento") or {}).get("feriados") or [])
+    return horario.touch_times(anchor, window_end, horario.parse_hours(negocio.get("horario_resumo")), BUSINESS_TZ, holidays=holidays)
 
 
 def official(state: dict[str, Any]) -> bool:
@@ -369,9 +370,7 @@ def atendimento_due_stage(state: dict[str, Any], anchor: float, last_lead: float
                           is_decided: Any = lambda stage: False) -> str | None:
     """The first attendant touch already due and not decided yet: the 4 go out in order, never skipping to the last.
 
-    None once the 24 h window has closed (the official number cannot send free text after it)."""
-    if atendimento_window_closed(anchor, last_lead, now):
-        return None
+    After the 24 h window the touch still happens, as a retomada template (template_touch)."""
     for (name, _), when in zip(ATENDIMENTO_STAGES, atendimento_touch_times(state, anchor, last_lead)):
         if now >= when and not is_decided(name):
             return name
@@ -657,8 +656,8 @@ async def followup_once(now: float | None = None) -> None:
         offer_now = oferta.current_offer(state.get("context") or {}) or records.get("oferta")
         stages = stages_for(offer_now, bool(records.get("preco_dado")))
         if offer_now == "atendimento":
-            if not official(state) or atendimento_window_closed(anchor, last_lead, current):
-                end_sequence(conversation_id, current, "legado" if not official(state) else "janela_24h")
+            if not official(state):
+                end_sequence(conversation_id, current, "legado")
                 continue
             stage = atendimento_due_stage(state, anchor, last_lead, current, lambda s: decided(conversation_id, s, anchor))
         else:
@@ -680,6 +679,19 @@ async def followup_once(now: float | None = None) -> None:
         quiet = current - max(last_agent, last_lead)
         if replied_during and quiet < QUIET_AFTER_REPLY_SECONDS:
             record_decision(conversation_id, stage, anchor, current, False, "conversa em andamento")
+            if final:
+                end_sequence(conversation_id, current, "completa")
+            continue
+        if offer_now == "atendimento" and atendimento_window_closed(anchor, last_lead, current):
+            # After the 23 h 30 window the touch goes as a retomada template (Talles 11/10).
+            due_at = dict(zip([s for s, _ in ATENDIMENTO_STAGES], atendimento_touch_times(state, anchor, last_lead))).get(stage, current)
+            if current - due_at > TEMPLATE_TOUCH_STALE_SECONDS:
+                record_decision(conversation_id, stage, anchor, current, False, "venceu sem template aprovado a tempo")
+            else:
+                outcome = await template_touch(conversation_id, records, stage, last_lead, current)
+                if outcome is None:
+                    continue  # no approved template yet: the same stage waits for the next pass
+                record_decision(conversation_id, stage, anchor, current, outcome == "agendada", f"template ({stage}): {outcome}")
             if final:
                 end_sequence(conversation_id, current, "completa")
             continue
@@ -789,11 +801,11 @@ def short_name(nome: str) -> str:
     return " ".join(words[:5]) if words else "vocês"
 
 
-def retomada_window(negocio: dict[str, Any], now: float) -> tuple[float, float] | None:
+def retomada_window(negocio: dict[str, Any], now: float, holidays: Any = ()) -> tuple[float, float] | None:
     """The next stretch of the business's open hours (9h–20h at most) in the next 3 days: (send_at, send_until)."""
     hours = horario.parse_hours(negocio.get("horario_resumo")) or horario.FALLBACK
-    for spans in (horario.open_intervals(now, now + 3 * 86400, horario._clip(hours), BUSINESS_TZ),
-                  horario.open_intervals(now, now + 3 * 86400, horario.FALLBACK, BUSINESS_TZ)):
+    for spans in (horario.open_intervals(now, now + 7 * 86400, horario._clip(hours), BUSINESS_TZ, holidays),
+                  horario.open_intervals(now, now + 7 * 86400, horario.FALLBACK, BUSINESS_TZ, holidays)):
         for a, b in spans:
             start = max(a, now) if a <= now else a + 1800  # half an hour after it opens, or right away if open
             if b - start >= 1800:
@@ -807,7 +819,33 @@ def render_retomada(text: str, values: list[str]) -> str:
     return text
 
 
-async def plan_retomada(candidate: dict[str, Any], now: float) -> str:
+STAGE_LAYER = {"2h": "tempo", "d1": "fit", "d3": "dinheiro", "d6": "adiamento"}
+# A template touch whose time passed more than this ago (no approved template until then) is dropped, not sent late.
+TEMPLATE_TOUCH_STALE_SECONDS = int(os.getenv("SDR_TEMPLATE_TOUCH_STALE_SECONDS", str(24 * 3600)))
+
+
+async def template_touch(conversation_id: int, records: dict[str, Any], stage: str, last_lead: float, now: float) -> str | None:
+    """One of the 4 touches after the window: the retomada template of the conversation's family, filled by the
+    layer of the stage. None when no template of that family is approved yet."""
+    familia = "robo" if is_robot(records) else "conversa"
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(f"{BRIDGE_URL}/sdr/retomada/template", params={"familia": familia},
+                                        headers={"Authorization": f"Bearer {os.getenv('SDR_BRAIN_TOKEN', '')}"})
+    except Exception as exc:
+        LOGGER.warning("Retomada template lookup failed: %s", exc)
+        return None
+    if response.status_code != 200:
+        return None
+    async with httpx.AsyncClient(timeout=10) as client:
+        lead = (await client.get(f"{BRIDGE_URL}/sdr/conversations/{conversation_id}",
+                                 headers={"Authorization": f"Bearer {os.getenv('SDR_BRAIN_TOKEN', '')}"})).json().get("lead") or {}
+    candidate = {"conversation_id": conversation_id, "familia": familia, "template": response.json(),
+                 "negocio": ((lead.get("origem") or {}).get("negocio") or {}), "teste_enviado_em": last_lead}
+    return await plan_retomada(candidate, now, estagio=stage)
+
+
+async def plan_retomada(candidate: dict[str, Any], now: float, estagio: str | None = None) -> str:
     cid = int(candidate["conversation_id"])
     async with httpx.AsyncClient(timeout=10) as client:
         response = await client.get(f"{BRIDGE_URL}/sdr/conversations/{cid}", headers={"Authorization": f"Bearer {os.getenv('SDR_BRAIN_TOKEN', '')}"})
@@ -817,9 +855,10 @@ async def plan_retomada(candidate: dict[str, Any], now: float) -> str:
     if state.get("paused"):
         return "pausada"
     negocio = candidate.get("negocio") or {}
-    window = retomada_window(negocio, now)
+    holidays = set((((state.get("context") or {}).get("ofertas") or {}).get("atendimento") or {}).get("feriados") or [])
+    window = retomada_window(negocio, now, holidays)
     if not window:
-        return "sem horário de funcionamento nos próximos 3 dias"
+        return "sem horário de funcionamento nos próximos 7 dias"
     template = candidate["template"]
     tested = float(candidate.get("teste_enviado_em") or now)
     records = (state.get("lead") or {}).get("registros") or {}
@@ -829,6 +868,7 @@ async def plan_retomada(candidate: dict[str, Any], now: float) -> str:
         "p2_sugerido": fit_case(when_label(tested, window[0]), template["text"], 2) if candidate["familia"] != "conversa" else None,
         "registros": records, "transcript": await chatwoot_messages(cid),
         "toques_anteriores": [{"estagio": s, "motivo": m} for s, m in previous_touch_motives(cid)],
+        "estagio": estagio, "camada_sugerida": STAGE_LAYER.get(estagio or ""),
         "retomadas_anteriores": candidate.get("retomadas_anteriores") or [],
     }
     result = await ask_llm(prompt("retomada.md") + "\nCONTEXTO:\n" + json.dumps(context, ensure_ascii=False)) or {}

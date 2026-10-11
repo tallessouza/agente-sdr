@@ -5,13 +5,13 @@ acontecer; se tiver horário de silêncio, diminui a distância entre eles com u
 
 And (10/10, 23h40): "intervalo de 2h só se o toque daqui a 6h der fora do expediente da empresa".
 
-And, asked which wins when both cannot hold (4 touches 6 h apart need 24 h; the window is 23 h 30): "os 4 valem mais".
+And (11/10): "colocando os disparos de 6 em 6 via texto nos que couber dentro da janela e via novo disparo de
+template nos que precisar fazer, deslocando para 2 horas para cair dentro do horário de atendimento".
 
 Each touch goes 6 h after the previous one (the first, 6 h after the agent's last message); 2 h after when the 6 h
-mark is outside the business's hours or would leave no room for the touches still to come; at the next opening
-when 2 h is closed too. Only in the business's hours, only between 9h and 20h (when touches go out at all) and
-before the end of the window (30 min before the 24 h close). A business closed for the whole window uses the
-daytime hours (9h–20h) the same way.
+mark is outside the business's hours; at the next opening when 2 h is closed too. Only in the business's hours and
+between 9h and 20h (when touches go out at all); a business with no opening in the next days uses 9h–20h. The 4
+always happen: inside the 23 h 30 window as text, after it as a retomada template (touch_channel).
 """
 import re
 import unicodedata
@@ -26,6 +26,7 @@ END_MARGIN = 10 * 60  # time left after the last touch, before the window closes
 # Never closer than this (10/10: the Nóris answered Saturday 18h54, closed Sunday, and got 4 touches 15 min apart).
 MIN_GAP = 2 * 3600
 SEND_START, SEND_END = 9.0, 20.0  # touches only go out in this local time (SDR_BUSINESS_*_HOUR of brain and bridge)
+HORIZON = 7 * 86400  # how far ahead a touch may be planned (a business open only on Fridays still gets its own hours)
 
 _DAY = r"(?:seg|ter|qua|qui|sex|sab|dom)"
 _RANGE = r"\d{1,2}h\d{0,2}\s*-\s*\d{1,2}h\d{0,2}"
@@ -73,12 +74,13 @@ def parse_hours(text: Any) -> dict[int, list[tuple[float, float]]] | None:
     return hours if any(hours.values()) else None
 
 
-def open_intervals(start: float, end: float, hours: dict[int, list[tuple[float, float]]], tz: Any) -> list[tuple[float, float]]:
-    """Open [a, b) spans of the business between two timestamps."""
+def open_intervals(start: float, end: float, hours: dict[int, list[tuple[float, float]]], tz: Any,
+                   holidays: Any = ()) -> list[tuple[float, float]]:
+    """Open [a, b) spans of the business between two timestamps; a holiday (YYYY-MM-DD) counts as closed."""
     out: list[tuple[float, float]] = []
     day = datetime.fromtimestamp(start, tz).replace(hour=0, minute=0, second=0, microsecond=0)
     while day.timestamp() < end:
-        for open_h, close_h in hours.get(day.weekday(), []):
+        for open_h, close_h in ([] if day.strftime("%Y-%m-%d") in holidays else hours.get(day.weekday(), [])):
             a = max((day + timedelta(hours=open_h)).timestamp(), start)
             b = min((day + timedelta(hours=close_h)).timestamp(), end)
             if b > a:
@@ -97,58 +99,42 @@ def _walk(intervals: list[tuple[float, float]], offset: float) -> float:
 
 
 def touch_times(anchor: float, window_end: float, hours: dict[int, list[tuple[float, float]]] | None, tz: Any,
-                n: int = TOUCHES, ideal_gap: float = IDEAL_GAP) -> list[float]:
+                n: int = TOUCHES, ideal_gap: float = IDEAL_GAP, holidays: Any = ()) -> list[float]:
     """n touch moments in open hours between anchor and window_end: ideal_gap apart, closer when needed, never under MIN_GAP."""
-    last_ok = window_end - END_MARGIN  # the bridge loop still has time to send the last one
-    if last_ok <= anchor:
-        return []
-    tried: list[list[float]] = []
-    # The business's hours first, then the daytime fallback when they cannot hold the n touches.
+    """n touch moments: each 6 h after the previous one, 2 h after when the 6 h mark falls outside the business's
+    hours, at the next opening when that is closed too. `window_end` no longer limits the plan: what falls inside
+    the window goes as text, what falls after it goes as a template (Talles 11/10, see touch_channel)."""
+    horizon = anchor + HORIZON
     for spec in ([hours] if hours else []) + [FALLBACK]:
-        plan = _plan(anchor, last_ok, open_intervals(anchor, last_ok, _clip(spec), tz), n, ideal_gap)
+        spans = open_intervals(anchor, horizon, _clip(spec), tz, holidays)
+        plan = _plan(anchor, horizon, spans, n, ideal_gap)
         if len(plan) >= n:
             return plan
-        tried.append(plan)
-    return max(tried, key=len)
+    return plan
 
 
-def _plan(anchor: float, last_ok: float, spans: list[tuple[float, float]], n: int, ideal_gap: float) -> list[float]:
-    """Each touch at 6 h, else 2 h, else the next opening: the first of these that still leaves room for the rest
-    (the 4 touches win over the 6 h, Talles 10/10)."""
+def touch_channel(when: float, window_end: float) -> str:
+    """'texto' when the touch falls inside the 24 h window (minus the margin), 'template' after it."""
+    return "texto" if when <= window_end - END_MARGIN else "template"
+
+
+def _plan(anchor: float, horizon: float, spans: list[tuple[float, float]], n: int, ideal_gap: float) -> list[float]:
     def is_open(t: float) -> bool:
         return any(a <= t < b for a, b in spans)
 
     def next_open(t: float) -> float | None:
         return next((max(a, t) for a, b in spans if b > t), None)
 
-    def options(previous: float) -> list[float]:
-        out = [previous + g for g in (ideal_gap, MIN_GAP) if previous + g <= last_ok and is_open(previous + g)]
-        fallback = next_open(previous + MIN_GAP)
-        if fallback is not None and fallback <= last_ok:
-            out.append(fallback)
-        return out
-
-    def most_after(previous: float, k: int) -> int:
-        """How many of k touches still fit after `previous` at the tightest pace (2 h, else next opening)."""
-        count = 0
-        while count < k:
-            nxt = options(previous)
-            if not nxt:
-                break
-            previous = min(nxt)
-            count += 1
-        return count
-
     plan: list[float] = []
     previous = anchor
     while len(plan) < n:
-        choices = options(previous)
-        if not choices:
+        when = next((previous + g for g in (ideal_gap, MIN_GAP) if is_open(previous + g)), None)
+        if when is None:
+            when = next_open(previous + MIN_GAP)
+        if when is None or when > horizon:
             break
-        left = n - len(plan) - 1
-        best = max(most_after(c, left) for c in choices)
-        previous = next(c for c in choices if most_after(c, left) == best)
-        plan.append(previous)
+        plan.append(when)
+        previous = when
     return plan
 
 

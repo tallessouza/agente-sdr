@@ -24,6 +24,8 @@ RETOMADA_MAX = int(os.getenv("RETOMADA_MAX", "2"))
 # The never-answered get their first retomada only the next day.
 RETOMADA_FIRST_AFTER = int(os.getenv("RETOMADA_FIRST_AFTER_SECONDS", str(18 * 3600)))
 PARAM_MAX = 300
+# No weekly retomada while the 4-touch sequence of the conversation is still going (text or template touches).
+SEQUENCE_QUIET = int(os.getenv("RETOMADA_SEQUENCE_QUIET_SECONDS", str(4 * 86400)))
 
 
 def connect() -> sqlite3.Connection:
@@ -64,6 +66,12 @@ def eligible(row: dict[str, Any], now: float) -> str | None:
         return None
     past = history(int(conversation))
     if any(r["status"] == "pendente" for r in past):
+        return None
+    with connect() as c:
+        recent_touch = c.execute("SELECT MAX(sent_at) FROM sdr_followups WHERE conversation=? AND status='sent'", (int(conversation),)).fetchone()[0]
+    if recent_touch and now - float(recent_touch) < SEQUENCE_QUIET:
+        return None  # the 4-touch sequence is still running (its later touches come as templates from the brain)
+    if any(r["status"] in {"enviada", "enviando"} and now - float(r["enviado_em"] or r["criado"]) < SEQUENCE_QUIET for r in past):
         return None
     sent = [r for r in past if r["status"] == "enviada"]
     if len(sent) >= RETOMADA_MAX or (sent and now - float(sent[-1]["enviado_em"] or 0) < RETOMADA_EVERY_DAYS * 86400):
