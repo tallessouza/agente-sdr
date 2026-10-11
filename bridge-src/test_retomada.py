@@ -46,7 +46,10 @@ class RetomadaTests(unittest.TestCase):
         prospeccao.connect().close()
         retomada.connect().close()
         pool_in_db([{"name": name, "category": "MARKETING", "text": text, "familia": familia, "saude": "UNKNOWN"}
-                    for name, (familia, text, _example) in th.RETOMADAS.items()], tipo="retomada")
+                    for name, (familia, text, _example) in th.RETOMADAS.items()]
+                   + [{"name": "retomada_sem_resposta_u01", "category": "UTILITY", "familia": "sem_resposta", "saude": "UNKNOWN",
+                       "text": "Oi, {{1}}. Aqui é o agente do Talles, uma IA. {{2}} fiz um teste de atendimento no WhatsApp de vocês. {{3}} Pode me responder por aqui quando puder."}],
+                   tipo="retomada")
 
     def tearDown(self):
         for p in self.patches:
@@ -89,6 +92,16 @@ class RetomadaTests(unittest.TestCase):
         self.assertTrue(all(c["template"]["name"].startswith(f"retomada_{c['familia']}") for c in retomada.candidates(now)))
         self.assertEqual({c["negocio"]["nome"] for c in retomada.candidates(now)}, {"Negócio 201"})  # from the leads table
 
+    def test_retomadas_have_their_own_80_20(self):
+        # Talles 11/10: "uma farm de 80/20 pra abertura e outra de 80/20 pra retomada": utility first, marketing every 5th.
+        self.assertEqual(retomada.pick("sem_resposta")["category"], "UTILITY")
+        self.assertIsNone(retomada.pick("conversa"))  # no UTILITY of that family: none goes yet
+        day = app.datetime_local(time.time()).strftime("%Y-%m-%d")
+        prospeccao.kv_set(f"tpl:{day}:RET_UTILITY", "4")
+        self.assertEqual(retomada.pick("sem_resposta")["category"], "MARKETING")
+        self.assertTrue(th.is_utility_variant("retomada_robo_u03") and not th.is_utility_variant("retomada_robo_03"))
+        self.assertEqual(th.familia_of("retomada_sem_resposta_u01"), "sem_resposta")
+
     def test_goes_out_only_in_the_marketing_slot_and_once(self):
         now = time.time()
         prospect("5548000000001", 201, "enviado", now - 20 * 3600)
@@ -98,8 +111,8 @@ class RetomadaTests(unittest.TestCase):
         day = app.datetime_local(now).strftime("%Y-%m-%d")
         with patch.object(cloud, "approved_templates", return_value=APPROVED_UTILITY), patch.object(app.handover, "paused", new=AsyncMock(return_value=False)), \
                 patch.object(cloud, "post_message", new=AsyncMock()) as post, patch.object(sdr, "private_note", new=AsyncMock()):
-            self.assertIsNone(asyncio.run(app.send_due_retomada(now)))  # 0 utility today: no marketing slot
-            prospeccao.kv_set(f"tpl:{day}:UTILITY", "4")
+            self.assertIsNone(asyncio.run(app.send_due_retomada(now)))  # 0 utility retomadas today: no marketing one yet
+            prospeccao.kv_set(f"tpl:{day}:RET_UTILITY", "4")  # the openings' counters do not count (own 80/20)
             self.assertEqual(asyncio.run(app.send_due_retomada(now)), "retomada")
             self.assertIsNone(asyncio.run(app.send_due_retomada(now)))  # never twice
         post.assert_awaited_once()
@@ -109,7 +122,8 @@ class RetomadaTests(unittest.TestCase):
         self.assertNotIn("\n", template["processed_params"]["3"])  # Meta refuses line breaks inside a variable
         self.assertEqual(template["name"], "retomada_sem_resposta_01")
         self.assertEqual(post.await_args.kwargs["attributes"], {"bridge_retomada": rid, "bridge_template": "retomada_sem_resposta_01"})
-        self.assertEqual(prospeccao.kv_get(f"tpl:{day}:MARKETING"), "1")
+        self.assertEqual(prospeccao.kv_get(f"tpl:{day}:RET_MARKETING"), "1")
+        self.assertIsNone(prospeccao.kv_get(f"tpl:{day}:MARKETING"))  # the openings' 80/20 untouched
         self.assertEqual(retomada.history(201)[0]["status"], "enviada")
         self.assertEqual(retomada.candidates(now + 60), [])  # one a working day at most
 

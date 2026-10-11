@@ -92,21 +92,37 @@ def eligible(row: dict[str, Any], now: float) -> str | None:
     return family
 
 
+def day_counts(now: float | None = None) -> tuple[int, int]:
+    """(utility, marketing) retomadas of the day for their own 80/20: the ones sent plus the ones scheduled and waiting."""
+    now = time.time() if now is None else now
+    day = datetime.fromtimestamp(now, sdr.BUSINESS_TZ).strftime("%Y-%m-%d")
+    utility = int(prospeccao.kv_get(f"tpl:{day}:RET_UTILITY") or 0)
+    marketing = int(prospeccao.kv_get(f"tpl:{day}:RET_MARKETING") or 0)
+    category = {t["name"]: t.get("category") for t in template_health.retomada_pool()}
+    with connect() as c:
+        for (name,) in c.execute("SELECT template FROM sdr_retomadas WHERE status='pendente'"):
+            utility += category.get(name) == "UTILITY"
+            marketing += category.get(name) == "MARKETING"
+    return utility, marketing
+
+
+def pick(familia: str, now: float | None = None) -> dict[str, Any] | None:
+    """The template for the next retomada of the family, by the retomadas' own 80/20 (Talles 11/10)."""
+    return template_health.pick_retomada(familia, *day_counts(now))
+
+
 def candidates(now: float | None = None, limit: int = 50) -> list[dict[str, Any]]:
     """Who may get a retomada now, with the approved template the brain must fill."""
     now = time.time() if now is None else now
-    by_family: dict[str, list[dict[str, Any]]] = {}
-    for t in template_health.retomada_pool():
-        by_family.setdefault(t["familia"], []).append(t)
     with prospeccao.connect() as c:
         c.row_factory = sqlite3.Row
         rows = [dict(r) for r in c.execute("SELECT * FROM sdr_prospects WHERE jid LIKE '%@cloud' AND conversation IS NOT NULL ORDER BY enviado_em")]
     out = []
     for row in rows:
         family = eligible(row, now)
-        if not family or not by_family.get(family):
-            continue
-        template = template_health.pick_weighted(by_family[family])
+        template = pick(family, now) if family else None
+        if not template:
+            continue  # no family, or the retomadas' 80/20 has no template for it yet (no UTILITY approved)
         out.append({"conversation_id": int(row["conversation"]), "familia": family, "template": {"name": template["name"], "text": template["text"]},
                     "negocio": leads.lead(row["numero"]) or {}, "teste_enviado_em": row.get("enviado_em"), "respondeu_em": row.get("respondeu_em"),
                     "retomadas_anteriores": [{"familia": r["familia"], "status": r["status"], "params": json.loads(r["params"])}

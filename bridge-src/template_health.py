@@ -460,6 +460,24 @@ RETOMADA_FECHA = ["Topa ver em 20 minutos com o Talles como isso fica resolvido,
                   "Faz sentido o Talles te mostrar em 20 minutos como responder na hora, ou não é o momento?",
                   "Vale 20 minutos com o Talles para ver isso funcionando, ou prefere que eu pare por aqui?",
                   "Topa ver isso em 20 minutos com o Talles, ou prefere que eu não chame mais?"]
+# Utility variations (Talles 11/10: "uma farm de 80/20 pra abertura e outra de 80/20 pra retomada"): the fixed text is a
+# plain note about the test or the conversation, without a sales close, and the argument stays in {{3}}. Meta decides
+# the category on approval: one that comes back MARKETING counts as marketing. Names end in _uNN.
+RETOMADA_UTILITY_TARGET = int(os.getenv("RETOMADA_UTILITY_TARGET", "4"))
+RETOMADA_UTILITY_SKELETONS = {
+    "sem_resposta": ["{abre}, {{{{1}}}}. {sou} {{{{2}}}} fiz um teste de atendimento no WhatsApp de vocês. {{{{3}}}} {fecha}",
+                     "{abre}, {{{{1}}}}. {sou} {{{{2}}}} mandei uma mensagem de teste para o atendimento de vocês. {{{{3}}}} {fecha}"],
+    "conversa": ["{abre}, {{{{1}}}}. {volta} Sobre o que você comentou, que {{{{2}}}}: {{{{3}}}}. {fecha}",
+                 "{abre}, {{{{1}}}}. {volta} Você tinha comentado que {{{{2}}}}. {{{{3}}}} {fecha}"],
+    "robo": ["{abre}, {{{{1}}}}. {sou} {{{{2}}}} a resposta automática de vocês chegou e a conversa parou ali. {{{{3}}}} {fecha}",
+             "{abre}, {{{{1}}}}. {sou} {{{{2}}}} escrevi para vocês e só a mensagem automática respondeu. {{{{3}}}} {fecha}"],
+}
+RETOMADA_UTILITY_FECHA = ["Se quiser continuar, é só responder por aqui.", "Pode me responder por aqui quando puder.",
+                          "Fico por aqui se quiser continuar a conversa."]
+
+
+def is_utility_variant(name: str) -> bool:
+    return bool(re.search(r"_u\d+$", str(name or "")))
 
 
 def retomada_example(familia: str, text: str) -> list[str]:
@@ -472,28 +490,30 @@ def retomada_example(familia: str, text: str) -> list[str]:
     return ["pessoal da Clínica Sorriso", fact, arg]
 
 
-def new_retomada_variants(familia: str, count: int, templates: list[dict[str, Any]], meta: dict[str, Any], rng: random.Random | None = None) -> list[dict[str, Any]]:
+def new_retomada_variants(familia: str, count: int, templates: list[dict[str, Any]], meta: dict[str, Any], rng: random.Random | None = None,
+                          utility: bool = False) -> list[dict[str, Any]]:
     rng = rng or random.Random()
+    skeletons, closes, tag = (RETOMADA_UTILITY_SKELETONS, RETOMADA_UTILITY_FECHA, "u") if utility else (RETOMADA_SKELETONS, RETOMADA_FECHA, "")
     texts = set(meta["usados"]) | {body_of(t) for t in templates}
     names = {t.get("name", "") for t in templates} | set(meta["templates"])
     out, attempts = [], 0
     while len(out) < count and attempts < count * 50:
         attempts += 1
-        text = rng.choice(RETOMADA_SKELETONS[familia]).format(abre=rng.choice(RETOMADA_OPEN), sou=rng.choice(RETOMADA_SOU),
-                                                               volta=rng.choice(RETOMADA_VOLTA), fecha=rng.choice(RETOMADA_FECHA))
+        text = rng.choice(skeletons[familia]).format(abre=rng.choice(RETOMADA_OPEN), sou=rng.choice(RETOMADA_SOU),
+                                                     volta=rng.choice(RETOMADA_VOLTA), fecha=rng.choice(closes))
         if text in texts:
             continue
         number = 1
-        while f"retomada_{familia}_{number:02d}" in names:
+        while f"retomada_{familia}_{tag}{number:02d}" in names:
             number += 1
-        name = f"retomada_{familia}_{number:02d}"
+        name = f"retomada_{familia}_{tag}{number:02d}"
         names.add(name); texts.add(text)
         out.append({"name": name, "familia": familia, "text": text, "example": retomada_example(familia, text)})
     return out
 
 
-async def submit_retomada(name: str, familia: str, text: str, example: list[str], meta: dict[str, Any]) -> bool:
-    body = {"name": name, "category": "MARKETING", "language": "pt_BR",
+async def submit_retomada(name: str, familia: str, text: str, example: list[str], meta: dict[str, Any], category: str = "MARKETING") -> bool:
+    body = {"name": name, "category": category, "language": "pt_BR",
             "components": [{"type": "BODY", "text": text, "example": {"body_text": [example]}}]}
     meta["usados"].append(text)
     try:
@@ -502,7 +522,7 @@ async def submit_retomada(name: str, familia: str, text: str, example: list[str]
         logger.warning("Retomada template %s not submitted: %s", name, exc)
         return False
     meta["templates"][name] = {"scheme": "retomada", "tipo": "retomada", "familia": familia, "params": ["p1", "p2", "p3"],
-                               "estado": "pronto", "submetido": time.time()}
+                               "estado": "pronto", "submetido": time.time(), "pedido": category}
     return True
 
 
@@ -517,7 +537,15 @@ async def ensure_retomadas(templates: list[dict[str, Any]], meta: dict[str, Any]
     today = time.strftime("%Y-%m-%d", time.gmtime((time.time() if now is None else now) - 3 * 3600))
     left = RETOMADA_DAILY_MAX - int(meta.setdefault("submetidos_retomada", {}).get(today, 0)) - len(submitted)
     for familia in RETOMADA_SKELETONS:
-        healthy = [t for t in templates if familia_of(t.get("name", "")) == familia
+        # Utility first: the 80/20 of the retomadas only moves with utility ones approved as UTILITY.
+        healthy_u = [t for t in templates if familia_of(t.get("name", "")) == familia and is_utility_variant(t.get("name", ""))
+                     and (t.get("status") == "PENDING" or (t.get("status") == "APPROVED" and t.get("category") == "UTILITY" and health(t) not in {"RED", "YELLOW"}))]
+        need = min(max(0, RETOMADA_UTILITY_TARGET - len(healthy_u)), left)
+        for v in new_retomada_variants(familia, need, templates, meta, utility=True):
+            if await submit_retomada(v["name"], familia, v["text"], v["example"], meta, "UTILITY"):
+                submitted.append(v["name"])
+                left -= 1
+        healthy = [t for t in templates if familia_of(t.get("name", "")) == familia and not is_utility_variant(t.get("name", ""))
                    and (t.get("status") == "PENDING" or (t.get("status") == "APPROVED" and health(t) not in {"RED", "YELLOW"}))]
         need = min(max(0, RETOMADA_TARGET - len(healthy)), left)
         for v in new_retomada_variants(familia, need, templates, meta):
@@ -552,6 +580,14 @@ async def ensure_interno(templates: list[dict[str, Any]], meta: dict[str, Any]) 
 def retomada_pool() -> list[dict[str, Any]]:
     """Approved, non-RED retomada templates, with their family (from the central database)."""
     return [{**t, "familia": t.get("familia") or familia_of(t["name"])} for t in templates_db.pool("retomada")]
+
+
+def pick_retomada(familia: str, utility_sent: int, marketing_sent: int, rng: Any = None) -> dict[str, Any] | None:
+    """A retomada template of the family by the retomadas' own 80/20 (Talles 11/10), apart from the openings': UTILITY
+    while marketing would pass MARKETING_MAX_SHARE of the day's retomadas, MARKETING otherwise; none without a UTILITY one."""
+    options = [t for t in retomada_pool() if t.get("familia") == familia]
+    category = choose_category(options, utility_sent, marketing_sent)
+    return pick_weighted([t for t in options if t.get("category") == category], rng) if category else None
 
 
 def marketing_slot(pool: list[dict[str, Any]], utility_sent: int, marketing_sent: int) -> bool:

@@ -13,7 +13,7 @@ the 23 h 30 window and template after it) with what the bridge actually did, and
   esperando     the lead wrote and nobody answered for 10 minutes (not paused, no outcome);
   sem_cadencia  the 4 touches ended before the daily cadence existed: it will not go out unless Talles decides;
   sem_acompanhamento  a business answered and the brain does not track the conversation (no touch would ever go);
-  vaga          template touches due in the next 24 h with no MARKETING slot in the 80/20 (prospecting paused).
+  vaga          template touches due in the next 24 h and no UTILITY retomada approved (the retomadas' own 80/20 needs one).
 New problems reach Talles in ONE message per hour, 8h–21h (alertas.notify_batch); the panel shows them all.
 """
 import logging
@@ -140,10 +140,10 @@ def findings(plan: dict[str, Any], now: float | None = None, utility_slots_ahead
             if str(conv) not in plan and not sdr.outcome_stops_touches(conv):
                 # 10/10: #71 answered and the brain never tracked it, so it would get no touch at all.
                 add(f"sem_brain:{conv}", "sem_acompanhamento", conv, f"#{conv}: respondeu e o brain não acompanha a conversa (sem nenhum toque)")
-    if utility_slots_ahead is not None and templates_due > utility_slots_ahead:
+    if utility_slots_ahead is not None and templates_due and not utility_slots_ahead:
         dia = local(now).strftime("%Y-%m-%d")
-        add(f"vaga:{dia}", "vaga", None, f"{templates_due} toques por template nas próximas 24 h e só {utility_slots_ahead} vaga(s) de marketing no 80/20"
-                                           " (template só sai junto com aberturas utility; com a prospecção pausada, nenhum sai)")
+        add(f"vaga:{dia}", "vaga", None, f"{templates_due} toques por template nas próximas 24 h e nenhum template de retomada utility aprovado"
+                                           " (pelo 80/20 das retomadas, nada sai até a Meta aprovar um utility do farm)")
     return out
 
 
@@ -175,19 +175,9 @@ def open_findings(limit: int = 200) -> list[dict[str, Any]]:
 
 
 def utility_slots(now: float | None = None) -> int:
-    """MARKETING slots the 80/20 can still open in the next 24 h: one per four utility sends the queue can make."""
-    import prospeccao
-    if not prospeccao.enabled():
-        return 0
-    with prospeccao.connect() as c:
-        if prospeccao.only_24h():
-            weekday = local(time.time() if now is None else now).weekday()
-            queued = c.execute("SELECT COUNT(*) FROM sdr_prospects p WHERE p.status='fila' AND EXISTS (SELECT 1 FROM lead_horarios h "
-                               "WHERE h.numero=p.numero AND h.dia=? AND h.aberto_24h=1)", (weekday,)).fetchone()[0]
-        else:
-            queued = c.execute("SELECT COUNT(*) FROM sdr_prospects WHERE status='fila'").fetchone()[0]
-    room = max(0, prospeccao.daily_cap(now) - prospeccao.sent_today(now))
-    return min(queued, room) // 4
+    """UTILITY retomada templates approved: the retomadas' own 80/20 (Talles 11/10) sends nothing without one."""
+    import template_health
+    return sum(t.get("category") == "UTILITY" for t in template_health.retomada_pool())
 
 
 async def patrol(send_evolution: Any = None, now: float | None = None) -> int:

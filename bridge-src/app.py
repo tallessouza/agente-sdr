@@ -1666,15 +1666,17 @@ async def alertas_worker() -> None:
 
 
 async def send_due_retomada(now: float) -> str | None:
-    """A due retomada goes out only in the MARKETING slot of the day's 80/20 ("conta no 80/20", Talles 10/10)."""
+    """A due retomada goes out by the retomadas' own 80/20 (Talles 11/10: "uma farm de 80/20 pra abertura e outra de 80/20
+    pra retomada"): a UTILITY one any time, a MARKETING one while it keeps marketing within 20% of the day's retomadas."""
     row = retomada.due(now)
     if not row:
         return None
     day = datetime_local(now).strftime("%Y-%m-%d")
-    utility_sent = int(prospeccao.kv_get(f"tpl:{day}:UTILITY") or 0)
-    marketing_sent = int(prospeccao.kv_get(f"tpl:{day}:MARKETING") or 0)
-    if not template_health.marketing_slot(cloud.approved_templates(), utility_sent, marketing_sent):
-        return None
+    utility_sent = int(prospeccao.kv_get(f"tpl:{day}:RET_UTILITY") or 0)
+    marketing_sent = int(prospeccao.kv_get(f"tpl:{day}:RET_MARKETING") or 0)
+    category = next((t.get("category") for t in template_health.retomada_pool() if t["name"] == row["template"]), None) or "MARKETING"
+    if category == "MARKETING" and (marketing_sent + 1) / (utility_sent + marketing_sent + 1) > template_health.MARKETING_MAX_SHARE:
+        return None  # waits for utility retomadas to go first
     conversation = int(row["conversation"])
     try:
         if await handover.paused(conversation):
@@ -1695,7 +1697,7 @@ async def send_due_retomada(now: float) -> str | None:
         retomada.mark(row["id"], "falhou", str(exc))
         return "erro"
     retomada.mark(row["id"], "enviada")
-    prospeccao.kv_set(f"tpl:{day}:MARKETING", str(marketing_sent + 1))
+    prospeccao.kv_set(f"tpl:{day}:RET_{category}", str((utility_sent if category == "UTILITY" else marketing_sent) + 1))
     templates_db.record_send(template["name"], conversation, day)
     handover.record(conversation, f"retomada:{row['id']}", "retomada_enviada", text)
     try:
@@ -2029,10 +2031,9 @@ async def sdr_ligacoes(request: Request, conversation: int | None = None):
 async def sdr_retomada_template(familia: str, request: Request):
     """An approved retomada template of the family, for a touch of the sequence that falls after the window."""
     if (e:=_sdr_auth(request)): return e
-    options = [t for t in template_health.retomada_pool() if t.get("familia") == familia]
-    if not options:
-        return JSONResponse({"detail": "nenhum template aprovado dessa família"}, 404)
-    template = template_health.pick_weighted(options)
+    template = retomada.pick(familia)
+    if not template:
+        return JSONResponse({"detail": "nenhum template dessa família pelo 80/20 das retomadas (falta utility aprovado)"}, 404)
     return {"name": template["name"], "text": template["text"]}
 
 @app.post("/sdr/retomadas")

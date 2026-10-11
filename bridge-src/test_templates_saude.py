@@ -95,16 +95,20 @@ class TemplateDbTests(unittest.TestCase):
 
         with patch.object(th, "graph", new=graph):
             submitted = asyncio.run(th.ensure_retomadas(templates, meta))
-        # 2 approved per family, target 4: 2 more each, but at most 6 a day.
+        # Utility first (the retomadas' own 80/20, Talles 11/10): none approved yet, target 4 a family, at most 6 a day.
         self.assertEqual(len(submitted), th.RETOMADA_DAILY_MAX)
-        self.assertEqual({b["category"] for b in posted}, {"MARKETING"})
+        self.assertEqual(posted[0]["category"], "UTILITY")
         for b in posted:
             text = b["components"][0]["text"]
             self.assertTrue(b["name"].startswith("retomada_") and th.familia_of(b["name"]) in th.RETOMADA_SKELETONS)
             self.assertFalse(text.startswith("{{") or text.endswith("}}"))
             self.assertNotRegex(text, r"\}\}\s*\{\{")
             self.assertEqual(sorted(re.findall(r"\{\{(\d)\}\}", text)), ["1", "2", "3"])
-            self.assertTrue(text.endswith("?"))
+            utility = b["category"] == "UTILITY"
+            self.assertEqual(th.is_utility_variant(b["name"]), utility)
+            self.assertTrue(text.endswith(".") if utility else text.endswith("?"))  # utility: no sales close
+            if utility:
+                self.assertNotIn("20 minutos", text)
             self.assertEqual(len(b["components"][0]["example"]["body_text"][0]), 3)
         self.assertEqual(len({b["components"][0]["text"] for b in posted}), len(posted))  # never the same text twice
         with patch.object(th, "graph", new=graph):
