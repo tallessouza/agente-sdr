@@ -110,6 +110,24 @@ class AtendimentoSequenceTests(unittest.TestCase):
         self.assertEqual(local.day, 11); self.assertTrue(9 <= local.hour < 20)
         self.assertLessEqual(when, ts(2026, 10, 10, 20, 12) + app.ATENDIMENTO_WINDOW_SECONDS)
 
+    def test_touches_go_in_order_and_stop_when_the_window_closes(self):
+        import app
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("America/Sao_Paulo")
+        anchor = datetime(2026, 10, 13, 9, 0, tzinfo=tz).timestamp()
+        state = {"jid": "5548999990000@cloud", "lead": {"origem": {"negocio": {"horario_resumo": "aberto 24h todos os dias"}}}}
+        times = app.atendimento_touch_times(state, anchor, anchor)
+        done: set[str] = set()
+        # Everything is past due (brain down): still the FIRST undecided one, never a jump to d6.
+        self.assertEqual(app.atendimento_due_stage(state, anchor, anchor, times[3] + 60, lambda s: s in done), "2h")
+        done |= {"2h", "d1"}
+        self.assertEqual(app.atendimento_due_stage(state, anchor, anchor, times[3] + 60, lambda s: s in done), "d3")
+        # Window closed (10/10: legacy conversations got a d6 at once): nothing at all.
+        self.assertIsNone(app.atendimento_due_stage(state, anchor, anchor, anchor + app.ATENDIMENTO_WINDOW_SECONDS + 1))
+        self.assertTrue(app.official(state))
+        self.assertFalse(app.official({"jid": "554899990000@s.whatsapp.net"}))
+
     def test_due_stage_follows_the_touch_times(self):
         import app
         from datetime import datetime
@@ -120,7 +138,8 @@ class AtendimentoSequenceTests(unittest.TestCase):
         times = app.atendimento_touch_times(state, anchor, anchor)
         self.assertIsNone(app.atendimento_due_stage(state, anchor, anchor, times[0] - 60))
         self.assertEqual(app.atendimento_due_stage(state, anchor, anchor, times[0] + 60), "2h")
-        self.assertEqual(app.atendimento_due_stage(state, anchor, anchor, times[3] + 60), "d6")
+        self.assertEqual(app.atendimento_due_stage(state, anchor, anchor, times[3] + 60), "2h")  # in order, first undecided
+        self.assertEqual(app.atendimento_due_stage(state, anchor, anchor, times[3] + 60, lambda s: s != "d6"), "d6")
 
 
 if __name__ == "__main__":

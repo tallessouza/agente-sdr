@@ -350,10 +350,26 @@ def atendimento_touch_times(state: dict[str, Any], anchor: float, last_lead: flo
     return horario.touch_times(anchor, window_end, horario.parse_hours(negocio.get("horario_resumo")), BUSINESS_TZ)
 
 
-def atendimento_due_stage(state: dict[str, Any], anchor: float, last_lead: float, now: float) -> str | None:
-    """Latest attendant touch already due (older ones are skipped, never burst)."""
-    reached = [name for (name, _), when in zip(ATENDIMENTO_STAGES, atendimento_touch_times(state, anchor, last_lead)) if now >= when]
-    return reached[-1] if reached else None
+def official(state: dict[str, Any]) -> bool:
+    """Conversations of the official number (Cloud API); the old Evolution ones are legacy and get no touches."""
+    return str(state.get("jid") or "").endswith("@cloud")
+
+
+def atendimento_window_closed(anchor: float, last_lead: float, now: float) -> bool:
+    return now >= (last_lead or anchor) + ATENDIMENTO_WINDOW_SECONDS
+
+
+def atendimento_due_stage(state: dict[str, Any], anchor: float, last_lead: float, now: float,
+                          is_decided: Any = lambda stage: False) -> str | None:
+    """The first attendant touch already due and not decided yet: the 4 go out in order, never skipping to the last.
+
+    None once the 24 h window has closed (the official number cannot send free text after it)."""
+    if atendimento_window_closed(anchor, last_lead, now):
+        return None
+    for (name, _), when in zip(ATENDIMENTO_STAGES, atendimento_touch_times(state, anchor, last_lead)):
+        if now >= when and not is_decided(name):
+            return name
+    return None
 
 
 def sequence(conversation_id: int) -> tuple[float, float | None] | None:
@@ -573,7 +589,8 @@ async def followup_once(now: float | None = None) -> None:
         records = state.get("lead", {}).get("registros", {})
         seq = sequence(conversation_id)
         active = seq is not None and seq[1] is None
-        if records.get("objecao") and str(records.get("opt_out") or "").strip().lower() != "sim" and not state.get("paused"):
+        if records.get("objecao") and str(records.get("opt_out") or "").strip().lower() != "sim" and not state.get("paused") \
+                and official(state) and (oferta.current_offer(state.get("context") or {}) or records.get("oferta")) == "atendimento":
             # "Não faz sentido pra nós" is an objection, not a stop (Talles, 10/10): one touch the next day to
             # find out why, then the sequence is over unless the lead answers.
             await objection_touch(conversation_id, state, records, current, local_state)
@@ -611,7 +628,10 @@ async def followup_once(now: float | None = None) -> None:
         offer_now = oferta.current_offer(state.get("context") or {}) or records.get("oferta")
         stages = stages_for(offer_now, bool(records.get("preco_dado")))
         if offer_now == "atendimento":
-            stage = atendimento_due_stage(state, anchor, last_lead, current)
+            if not official(state) or atendimento_window_closed(anchor, last_lead, current):
+                end_sequence(conversation_id, current, "legado" if not official(state) else "janela_24h")
+                continue
+            stage = atendimento_due_stage(state, anchor, last_lead, current, lambda s: decided(conversation_id, s, anchor))
         else:
             stage = due_stage(current - anchor, bool(records.get("preco_dado")), offer_now)
         if stage is None:

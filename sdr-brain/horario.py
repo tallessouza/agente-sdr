@@ -17,6 +17,7 @@ FALLBACK = {d: [(9.0, 20.0)] for d in range(7)}
 TOUCHES = 4
 IDEAL_GAP = 6 * 3600
 MIN_TOUCH_OPEN_SECONDS = 15 * 60  # less open time than this per touch: use the daytime fallback
+END_MARGIN = 30 * 60  # open time left after the last touch, before the window closes
 
 _DAY = r"(?:seg|ter|qua|qui|sex|sab|dom)"
 _RANGE = r"\d{1,2}h\d{0,2}\s*-\s*\d{1,2}h\d{0,2}"
@@ -99,5 +100,7 @@ def touch_times(anchor: float, window_end: float, hours: dict[int, list[tuple[fl
         total = sum(b - a for a, b in intervals)
     if total < n * MIN_TOUCH_OPEN_SECONDS:
         intervals, total = [(anchor, window_end)], window_end - anchor
-    gap = min(ideal_gap, total / n)
+    # The last touch keeps END_MARGIN of open time before the window closes, so it can still go out.
+    usable = total - min(END_MARGIN, total * 0.1)
+    gap = min(ideal_gap, usable / n)
     return [_walk(intervals, gap * k) for k in range(1, n + 1)]
