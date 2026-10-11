@@ -5,10 +5,12 @@ removendo incertezas." Three families: `sem_resposta` (never answered the test),
 `conversa` (a person talked and went quiet). The bridge lists who may get one (candidates), the brain writes the
 variables for each lead (the layer of Hormozi's onion) and schedules it inside the business's hours, and the
 prospect worker sends it in the MARKETING slot of the 80/20 ("conta no 80/20", Talles 10/10): it only moves
-together with the first contacts. At most one per conversation every RETOMADA_EVERY_DAYS, RETOMADA_MAX in total.
+together with the first contacts. One per working day, RETOMADA_MAX in total, only for the businesses that never answered
+(the others follow the brain's sequence).
 """
 import json
 import os
+from datetime import datetime
 import random
 import sqlite3
 import time
@@ -20,8 +22,12 @@ import prospeccao
 import sdr
 import template_health
 
-RETOMADA_EVERY_DAYS = int(os.getenv("RETOMADA_EVERY_DAYS", "7"))
-RETOMADA_MAX = int(os.getenv("RETOMADA_MAX", "2"))
+# Talles 11/10: "cadência diária dos próximos dias durante a semana": one a working day, at most RETOMADA_MAX.
+RETOMADA_EVERY_SECONDS = int(os.getenv("RETOMADA_EVERY_SECONDS", str(20 * 3600)))
+RETOMADA_MAX = int(os.getenv("RETOMADA_MAX", "3"))
+# Who talked and went quiet (conversa) and robots follow the brain's sequence (4 touches + c1..c3); the bridge's
+# candidates are only the businesses that never answered the test.
+RETOMADA_FAMILIES = set(os.getenv("RETOMADA_FAMILIES", "sem_resposta").split(","))
 # The never-answered get their first retomada only the next day.
 RETOMADA_FIRST_AFTER = int(os.getenv("RETOMADA_FIRST_AFTER_SECONDS", str(18 * 3600)))
 PARAM_MAX = 300
@@ -63,6 +69,12 @@ def eligible(row: dict[str, Any], now: float) -> str | None:
     if str(records.get("opt_out") or "").strip().lower() == "sim" or sdr.outcome_stops_touches(int(conversation)):
         return None
     family = family_of(row, records, last_lead)
+    if family not in RETOMADA_FAMILIES:
+        return None
+    today = datetime.fromtimestamp(now, sdr.BUSINESS_TZ)
+    holidays = set(((sdr.offers().get("atendimento") or {}).get("feriados")) or [])
+    if today.weekday() >= 5 or today.strftime("%Y-%m-%d") in holidays:
+        return None  # working days only
     if family == "sem_resposta" and now - float(row.get("enviado_em") or now) < RETOMADA_FIRST_AFTER:
         return None
     past = history(int(conversation))
@@ -75,7 +87,7 @@ def eligible(row: dict[str, Any], now: float) -> str | None:
     if any(r["status"] in {"enviada", "enviando"} and now - float(r["enviado_em"] or r["criado"]) < SEQUENCE_QUIET for r in past):
         return None
     sent = [r for r in past if r["status"] == "enviada"]
-    if len(sent) >= RETOMADA_MAX or (sent and now - float(sent[-1]["enviado_em"] or 0) < RETOMADA_EVERY_DAYS * 86400):
+    if len(sent) >= RETOMADA_MAX or (sent and now - float(sent[-1]["enviado_em"] or 0) < RETOMADA_EVERY_SECONDS):
         return None
     return family
 

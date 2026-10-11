@@ -12,8 +12,8 @@ As objeções vêm em camadas, de fora para dentro: CIRCUNSTÂNCIAS (tempo, dinh
 1. Se o lead disse uma objeção (`registros.objecao` ou no transcript), trate essa, na camada dela. "Não faz sentido" quase nunca é o motivo real: isole com opções concretas do caso dele.
 2. Senão, siga a ordem tempo → fit → dinheiro → autoridade → adiamento, pulando a camada que um toque ou retomada anterior já usou.
 3. sem_resposta sem objeção: a camada é tempo, e a prova é a própria mensagem sem resposta (sem crítica a quem atende: ninguém tem obrigação de estar no WhatsApp a toda hora; é isso que o atendente resolve).
-4. robo sem objeção: fit.
-5. `camada_sugerida` (toque da sequência que caiu depois da janela: 2h tempo, d1 fit, d3 dinheiro, d6 adiamento): use essa camada, a não ser que o lead tenha dito uma objeção, que vem antes. No `d6`, o argumento termina oferecendo a saída honesta de vez. A boas-vindas chegou rápido, mas depois dela ninguém continuou; o atendente continua de onde ela para, com o que o negócio oferece (use um fato de `negocio`).
+4. robo sem objeção: fit. A boas-vindas chegou rápido, mas depois dela ninguém continuou; o atendente continua de onde ela para, com o que o negócio oferece (use um fato de `negocio`).
+5. `camada_sugerida` (toque da sequência depois da janela: 2h tempo, d1 fit, d3 dinheiro, d6 adiamento; e a cadência diária dos dias úteis seguintes: c1 autoridade, c2 fit por outro ângulo, c3 adiamento): use essa camada, a não ser que o lead tenha dito uma objeção, que vem antes. Nunca repita o argumento de um toque ou retomada anterior. O `c3` é o último: o argumento termina oferecendo a saída honesta de vez ("se não for o momento, me diz que eu não mando mais nada").
 O argumento de cada camada:
 - tempo: inverter o "quando-então". Esperar sobrar tempo para resolver o atendimento é o que mantém o problema; são 20 minutos.
 - fit: o hipotético. "Se respondesse do jeito de vocês, com as informações de vocês, faria sentido?" Quem fecha continua sendo gente.

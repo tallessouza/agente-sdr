@@ -44,7 +44,9 @@ POST_PRICE_STAGE = ("d4", 345600)
 # The names keep the order of the objections in fup.md (tempo, fit, valor, adiamento); WHEN they go out comes
 # from horario.touch_times: 4 touches inside the 24 h window, 6 h apart in the business's open hours, closer
 # when closed hours eat the window (Talles, 10/10). The delays below are only the nominal spacing.
-ATENDIMENTO_STAGES = [("2h", 6 * 3600), ("d1", 12 * 3600), ("d3", 18 * 3600), ("d6", 24 * 3600)]
+ATENDIMENTO_STAGES = [("2h", 6 * 3600), ("d1", 12 * 3600), ("d3", 18 * 3600), ("d6", 24 * 3600),
+                      # then the daily cadence on the following working days, by template (Talles 11/10)
+                      ("c1", 48 * 3600), ("c2", 72 * 3600), ("c3", 96 * 3600)]
 # Touches end 30 min before the official number's 24 h window closes ("sempre considerando a janela com 30 min
 # antes de acabar", Talles 10/10); the bridge drops free text after the same 23 h 30.
 ATENDIMENTO_WINDOW_SECONDS = int(os.getenv("SDR_ATENDIMENTO_WINDOW_SECONDS", str(23 * 3600 + 30 * 60)))
@@ -354,7 +356,10 @@ def atendimento_touch_times(state: dict[str, Any], anchor: float, last_lead: flo
     negocio = (((state.get("lead") or {}).get("origem") or {}).get("negocio") or {})
     window_end = (last_lead or anchor) + ATENDIMENTO_WINDOW_SECONDS
     holidays = set((((state.get("context") or {}).get("ofertas") or {}).get("atendimento") or {}).get("feriados") or [])
-    return horario.touch_times(anchor, window_end, horario.parse_hours(negocio.get("horario_resumo")), BUSINESS_TZ, holidays=holidays)
+    hours = horario.parse_hours(negocio.get("horario_resumo"))
+    times = horario.touch_times(anchor, window_end, hours, BUSINESS_TZ, holidays=holidays)
+    # After the 4 touches, one a working day for the next days (always templates: the window is long closed).
+    return times + (horario.cadence_times(times[-1], hours, BUSINESS_TZ, holidays) if len(times) == 4 else [])
 
 
 def official(state: dict[str, Any]) -> bool:
@@ -819,7 +824,9 @@ def render_retomada(text: str, values: list[str]) -> str:
     return text
 
 
-STAGE_LAYER = {"2h": "tempo", "d1": "fit", "d3": "dinheiro", "d6": "adiamento"}
+STAGE_LAYER = {"2h": "tempo", "d1": "fit", "d3": "dinheiro", "d6": "adiamento",
+               # the daily cadence goes to the next layers of the onion: other people, then the honest last call
+               "c1": "autoridade", "c2": "fit", "c3": "adiamento"}
 # A template touch whose time passed more than this ago (no approved template until then) is dropped, not sent late.
 TEMPLATE_TOUCH_STALE_SECONDS = int(os.getenv("SDR_TEMPLATE_TOUCH_STALE_SECONDS", str(24 * 3600)))
 
@@ -958,6 +965,53 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="sdr-brain", lifespan=lifespan)
+
+
+async def plan_snapshot(now: float | None = None) -> dict[str, Any]:
+    """The expected follow-up plan of every official conversation the brain tracks (read only), for the bridge's
+    vigia (Talles 11/10: "não me faça passar vergonha"): the 4 touch times with their channel (text inside the
+    23 h 30 window, template after), what was decided for each stage, and whether touches may go at all."""
+    current = now or time.time()
+    out: dict[str, Any] = {}
+    with closing(connection()) as conn:
+        tracked_ids = [r[0] for r in conn.execute("SELECT conversation_id FROM tracked")]
+        ended = {r[0]: r[1] for r in conn.execute("SELECT conversation_id, end_reason FROM sequences WHERE ended_at IS NOT NULL")}
+        decisions: dict[int, list[dict[str, Any]]] = {}
+        for cid, stage, anchor, ts, motivo, fired in conn.execute("SELECT conversation_id, stage, anchor, ts, motivo, disparar FROM decisions ORDER BY ts"):
+            decisions.setdefault(cid, []).append({"estagio": stage, "anchor": anchor, "quando": ts, "disparou": bool(fired), "motivo": (motivo or "")[:200]})
+    async with httpx.AsyncClient(timeout=10) as client:
+        for cid in tracked_ids:
+            try:
+                r = await client.get(f"{BRIDGE_URL}/sdr/conversations/{cid}", headers={"Authorization": f"Bearer {os.getenv('SDR_BRAIN_TOKEN', '')}"})
+                if r.status_code != 200:
+                    continue
+                st = r.json()
+            except Exception:
+                continue
+            if not official(st):
+                continue
+            rec = (st.get("lead") or {}).get("registros") or {}
+            last_lead, last_agent = float(st.get("last_lead_ts") or 0), float(st.get("last_agent_ts") or 0)
+            seq = sequence(cid)
+            anchor = seq[0] if seq and seq[1] is None else last_agent
+            window_end = (last_lead or anchor) + ATENDIMENTO_WINDOW_SECONDS + horario.END_MARGIN
+            plan = []
+            if last_lead and last_agent:
+                for (stage, _), when in zip(ATENDIMENTO_STAGES, atendimento_touch_times(st, anchor, last_lead)):
+                    plan.append({"estagio": stage, "quando": when, "canal": horario.touch_channel(when, window_end),
+                                 "decidido": decided(cid, stage, anchor)})
+            out[str(cid)] = {"plano": plan, "decisoes": decisions.get(cid, []), "anchor": anchor, "encerrada": ended.get(cid),
+                             "pausada": bool(st.get("paused")), "para_toques": outcome_stops_touches(rec),
+                             "objecao": bool(rec.get("objecao")), "robo": is_robot(rec), "lead_falou_por_ultimo": last_lead > last_agent,
+                             "limite_toque": (last_lead + ATENDIMENTO_WINDOW_SECONDS) if last_lead else None,
+                             "horario_resumo": (((st.get("lead") or {}).get("origem") or {}).get("negocio") or {}).get("horario_resumo")}
+    return {"gerado_em": current, "conversas": out}
+
+
+@app.get("/plano")
+async def plano(request: Request) -> dict[str, Any]:
+    auth(request)
+    return await plan_snapshot()
 
 
 @app.get("/health")

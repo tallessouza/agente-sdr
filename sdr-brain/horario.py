@@ -113,6 +113,34 @@ def touch_times(anchor: float, window_end: float, hours: dict[int, list[tuple[fl
     return plan
 
 
+CADENCE_TOUCHES = 3
+CADENCE_AFTER_OPENING = 3600  # one hour after the business opens
+
+
+def cadence_times(after: float, hours: dict[int, list[tuple[float, float]]] | None, tz: Any, holidays: Any = (),
+                  n: int = CADENCE_TOUCHES) -> list[float]:
+    """The daily cadence after the 4 touches (Talles 11/10: "cadência diária dos próximos dias durante a semana"): one
+    touch per working day (Monday to Friday, not a holiday) after `after`, an hour after the business opens (9h–20h);
+    a weekday the business is closed is skipped. Up to 14 days ahead."""
+    spec = _clip(hours or FALLBACK)
+    out: list[float] = []
+    day = datetime.fromtimestamp(after, tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    for _ in range(14):
+        day = datetime(day.year, day.month, day.day, tzinfo=tz) + timedelta(days=1)
+        if day.weekday() >= 5 or day.strftime("%Y-%m-%d") in holidays:
+            continue
+        spans = spec.get(day.weekday(), [])
+        if not spans:
+            continue
+        open_h, close_h = spans[0]
+        when = min((day + timedelta(hours=open_h)).timestamp() + CADENCE_AFTER_OPENING, (day + timedelta(hours=close_h)).timestamp() - 1800)
+        if when > after:
+            out.append(when)
+        if len(out) >= n:
+            break
+    return out
+
+
 def touch_channel(when: float, window_end: float) -> str:
     """'texto' when the touch falls inside the 24 h window (minus the margin), 'template' after it."""
     return "texto" if when <= window_end - END_MARGIN else "template"

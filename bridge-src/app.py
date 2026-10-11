@@ -19,6 +19,7 @@ import alertas
 import leads
 import ligacoes
 import template_health
+import vigia
 import templates_db
 import random
 import sdr
@@ -114,6 +115,7 @@ async def start_background_workers() -> None:
     asyncio.create_task(brain_event_worker(), name="brain-events")
     if cloud.enabled():
         asyncio.create_task(alertas_worker(), name="alertas")
+        asyncio.create_task(vigia_worker(), name="vigia")
     if os.getenv("BRIDGE_RECOVER", "1") != "0":
         try:
             recover_turns()
@@ -1639,6 +1641,17 @@ async def resend_after_131049(now: float) -> str | None:
         prospeccao.update(numero, status="enviado")
     logger.info("Resent after 131049 number=%s template=%s", numero[-4:], template["name"])
     return "reenviado"
+
+
+async def vigia_worker() -> None:
+    while True:
+        try:
+            await vigia.patrol(send_evolution)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("vigia patrol failed")
+        await asyncio.sleep(vigia.VIGIA_SECONDS)
 
 
 async def alertas_worker() -> None:

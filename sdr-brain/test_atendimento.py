@@ -46,7 +46,7 @@ class AtendimentoTests(unittest.TestCase):
 class AtendimentoSequenceTests(unittest.TestCase):
     def test_four_touches_only_for_atendimento(self):
         import app
-        self.assertEqual([s for s, _ in app.stages_for("atendimento", False)], ["2h", "d1", "d3", "d6"])
+        self.assertEqual([s for s, _ in app.stages_for("atendimento", False)], ["2h", "d1", "d3", "d6", "c1", "c2", "c3"])
         # the other offers keep their sequence
         self.assertEqual(app.due_stage(1800, False, "instalador"), "30min")
         self.assertEqual(app.due_stage(1800, False), "30min")
@@ -237,6 +237,34 @@ class RetomadaPlanTests(unittest.TestCase):
         text = app.render_retomada("Oi, {{1}}! {{2}} mandei. {{3}} Topa?", ["pessoal da X", "Ontem às 19h", "Quem chama fecha com quem responde."])
         self.assertEqual(text, "Oi, pessoal da X! Ontem às 19h mandei. Quem chama fecha com quem responde. Topa?")
 
+
+
+class CadenceTests(unittest.TestCase):
+    def test_daily_cadence_on_working_days_after_the_four_touches(self):
+        # Talles 11/10: after the 4 touches, one a working day on the next days (templates), in the business hours.
+        import horario
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("America/Sao_Paulo")
+        fmt = lambda times: [datetime.fromtimestamp(t, tz).strftime("%a %d %H:%M") for t in times]
+        office = horario.parse_hours("seg a sex 8h–18h, sáb 8h–12h, dom fechado")
+        last = datetime(2026, 10, 9, 17, 0, tzinfo=tz).timestamp()  # Friday
+        self.assertEqual(fmt(horario.cadence_times(last, office, tz, holidays={"2026-10-12"})), ["Tue 13 10:00", "Wed 14 10:00", "Thu 15 10:00"])
+        late = horario.parse_hours("seg fechado, ter a sex 14h–20h, sáb e dom fechado")
+        self.assertEqual(fmt(horario.cadence_times(last, late, tz)), ["Tue 13 15:00", "Wed 14 15:00", "Thu 15 15:00"])
+
+    def test_sequence_has_seven_stages_and_the_cadence_layers(self):
+        import app
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("America/Sao_Paulo")
+        anchor = datetime(2026, 10, 13, 9, 0, tzinfo=tz).timestamp()
+        state = {"lead": {"origem": {"negocio": {"horario_resumo": "seg a sex 8h–18h, sáb e dom fechado"}}}}
+        times = app.atendimento_touch_times(state, anchor, anchor)
+        self.assertEqual(len(times), 7)
+        self.assertTrue(all(b > a for a, b in zip(times, times[1:])))
+        self.assertTrue(all(datetime.fromtimestamp(t, tz).weekday() < 5 for t in times[4:]))
+        self.assertEqual([app.STAGE_LAYER[s] for s in ("c1", "c2", "c3")], ["autoridade", "fit", "adiamento"])
 
 if __name__ == "__main__":
     unittest.main()

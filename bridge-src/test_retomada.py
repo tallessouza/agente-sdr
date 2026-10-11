@@ -64,7 +64,8 @@ class RetomadaTests(unittest.TestCase):
             self.assertTrue(text.rstrip().endswith("?"), name)  # ends in the question with the honest way out
 
     def test_who_may_get_a_retomada(self):
-        now = time.time()
+        from datetime import datetime
+        now = datetime(2026, 10, 13, 10, 0, tzinfo=sdr.BUSINESS_TZ).timestamp()  # a Tuesday: the cadence runs on working days
         prospect("5548000000001", 201, "enviado", now - 20 * 3600)            # never answered, a day ago
         prospect("5548000000002", 202, "enviado", now - 2 * 3600)             # never answered, too soon
         prospect("5548000000003", 203, "respondeu", now - 30 * 3600, now - 29 * 3600)
@@ -81,9 +82,12 @@ class RetomadaTests(unittest.TestCase):
         sdr.touch_activity(207, lead=True, ts=now - 30 * 3600)
         record(207, "desfecho", "desqualificado")
         found = {c["conversation_id"]: c["familia"] for c in retomada.candidates(now)}
-        self.assertEqual(found, {201: "sem_resposta", 203: "conversa", 205: "robo"})
+        # Only who never answered: who talked (203) and robots (205) follow the brain's sequence and its c1..c3 cadence.
+        self.assertEqual(found, {201: "sem_resposta"})
+        sunday = datetime(2026, 10, 11, 10, 0, tzinfo=sdr.BUSINESS_TZ).timestamp()
+        self.assertEqual(retomada.candidates(sunday), [])  # working days only
         self.assertTrue(all(c["template"]["name"].startswith(f"retomada_{c['familia']}") for c in retomada.candidates(now)))
-        self.assertEqual({c["negocio"]["nome"] for c in retomada.candidates(now)}, {"Negócio 201", "Negócio 203", "Negócio 205"})  # from the leads table
+        self.assertEqual({c["negocio"]["nome"] for c in retomada.candidates(now)}, {"Negócio 201"})  # from the leads table
 
     def test_goes_out_only_in_the_marketing_slot_and_once(self):
         now = time.time()
@@ -107,7 +111,7 @@ class RetomadaTests(unittest.TestCase):
         self.assertEqual(post.await_args.kwargs["attributes"], {"bridge_retomada": rid, "bridge_template": "retomada_sem_resposta_01"})
         self.assertEqual(prospeccao.kv_get(f"tpl:{day}:MARKETING"), "1")
         self.assertEqual(retomada.history(201)[0]["status"], "enviada")
-        self.assertEqual(retomada.candidates(now + 60), [])  # one a week at most
+        self.assertEqual(retomada.candidates(now + 60), [])  # one a working day at most
 
     def test_past_business_window_expires(self):
         now = time.time()
