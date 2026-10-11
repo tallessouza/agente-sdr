@@ -50,9 +50,9 @@ ATENDIMENTO_STAGES = [("2h", 6 * 3600), ("d1", 12 * 3600), ("d3", 18 * 3600), ("
 ATENDIMENTO_WINDOW_SECONDS = int(os.getenv("SDR_ATENDIMENTO_WINDOW_SECONDS", str(23 * 3600 + 30 * 60)))
 # Two touches never go out closer than this, whatever the stage (10/10: the Nóris got 4 in 4 minutes).
 MIN_TOUCH_GAP_SECONDS = int(os.getenv("SDR_MIN_TOUCH_GAP_SECONDS", str(2 * 3600)))
-# A robot (menu, automatic greeting) answered the test: its outcome does not stop the touches, which speak to
+# A robot (menu, automatic greeting) answered the test: "avaliar_dono" does not stop the touches, which speak to
 # whoever reads the WhatsApp later, the owner ("fup pra quem conversou e parou, mesmo que bot", Talles 10/10).
-ROBOT_OUTCOMES = {"desqualificado", "avaliar_dono"}
+ROBOT_OUTCOMES = {"avaliar_dono"}  # "desqualificado" is a person saying it does not fit (#143: closed 3 years ago)
 # No touch of any kind right after the agent spoke (10/10: a same-day "next step" fired 41 s after the reveal).
 MIN_SILENCE_SECONDS = int(os.getenv("SDR_MIN_SILENCE_SECONDS", "7200"))
 

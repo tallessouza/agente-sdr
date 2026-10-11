@@ -49,7 +49,7 @@ class RobotTouchTests(unittest.TestCase):
 
     def robot(self):
         put(77, "resposta_automatica", "sim")
-        put(77, "desfecho", "desqualificado")
+        put(77, "desfecho", "avaliar_dono")
 
     def send_due(self, now):
         with patch.object(app, "SDR_BRAIN_URL", "http://brain"), patch.object(app.handover, "paused", new=AsyncMock(return_value=False)), \
@@ -62,7 +62,7 @@ class RobotTouchTests(unittest.TestCase):
     def test_robot_outcome_does_not_stop_touches_but_a_real_one_does(self):
         self.robot()
         self.assertFalse(sdr.outcome_stops_touches(77))
-        put(78, "desfecho", "desqualificado")
+        put(78, "resposta_automatica", "sim"); put(78, "desfecho", "desqualificado")  # #143: a person said it closed
         self.assertTrue(sdr.outcome_stops_touches(78))
         now = time.time()
         sdr.touch_activity(77, lead=True, ts=now - 3600); sdr.touch_activity(77, agent=True, ts=now - 3500)

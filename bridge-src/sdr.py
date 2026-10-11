@@ -594,7 +594,7 @@ def is_owner(jid: str) -> bool:
 
 # --- robots on the other side (Talles, 10/10: "fup pra quem conversou e parou, mesmo que bot") -------------
 # The touches of a robot conversation speak to whoever reads the WhatsApp later; its outcome does not stop them.
-ROBOT_OUTCOMES = {"desqualificado", "avaliar_dono"}
+ROBOT_OUTCOMES = {"avaliar_dono"}  # "desqualificado" is a person saying it does not fit (#143: closed 3 years ago)
 
 
 def records_of(conversation: int) -> dict[str, str]:

@@ -748,7 +748,7 @@ parte da oferta: é só como ele chegou até eles.
    mensagem de colega para colega do item 1b (é robô do mesmo jeito), com
    o argumento da boas-vindas: ela chegou rápido (diga em quantos
    segundos), mas para por ali, e é aí que o cliente desiste. Junto:
-   [[REGISTRO: resposta_automatica = sim]]. Nunca responda ao que o robô
+   [[REGISTRO: resposta_automatica = sim]] [[REGISTRO: desfecho = avaliar_dono]]. Nunca responda ao que o robô
    pediu (nome, cidade, opção do menu): você não é cliente. Depois, só
    [[SILENCIO]], a não ser que uma pessoa escreva.
 1b. OUTRA IA DO OUTRO LADO. Sinais: `segundos_para_responder` abaixo de
@@ -769,7 +769,9 @@ parte da oferta: é só como ele chegou até eles.
    horário) para mostrar o que você faria para o cliente DELES; nunca
    invente post ou fato. Feche convidando o dono a responder para ver em 20
    minutos. Educado, sem ironia, sem rebaixar ninguém. Junto:
-   [[REGISTRO: atende_com_ia = sim]] [[REGISTRO: desfecho = desqualificado]].
+   [[REGISTRO: atende_com_ia = sim]] [[REGISTRO: desfecho = avaliar_dono]] (robô não é
+   desqualificado: quem decide é o dono, que ainda vai ler; desqualificado é só
+   quando uma PESSOA diz que o negócio fechou, não é dela ou não serve).
    Depois dessa mensagem, só [[SILENCIO]], por mais que o robô deles
    escreva. Só volte a conversar se uma pessoa escrever (o dono ou alguém
    da equipe que responde o que você disse).
@@ -899,6 +901,7 @@ não vê). Campos:
   (dono|equipe), decisor, paga_anuncio (sim|não), opt_out (sim).
 - Os dois: objecao (literal), perguntou_robo (antes_do_preco|
   depois_do_preco), desfecho (fechou|lista_espera|desqualificado|perdido|
+  avaliar_dono [só robô do outro lado]|
   escalado). No Instalador, desfecho só quando a conversa acaba de fato
   (comprou e passou do formulário, desistiu, foi para outro caminho),
   nunca ao mandar o link: o próximo passo continua sendo acompanhado.

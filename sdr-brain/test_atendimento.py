@@ -193,7 +193,8 @@ class TouchSpacingTests(unittest.TestCase):
     def test_robots_keep_getting_touches_and_real_outcomes_stop_them(self):
         import app
         self.assertTrue(app.is_robot({"resposta_automatica": "sim"}))
-        self.assertFalse(app.outcome_stops_touches({"resposta_automatica": "sim", "desfecho": "desqualificado"}))
+        self.assertFalse(app.outcome_stops_touches({"resposta_automatica": "sim", "desfecho": "avaliar_dono"}))
+        self.assertTrue(app.outcome_stops_touches({"resposta_automatica": "sim", "desfecho": "desqualificado"}))  # a person said no
         self.assertFalse(app.outcome_stops_touches({"atende_com_ia": "sim", "desfecho": "avaliar_dono"}))
         self.assertTrue(app.outcome_stops_touches({"desfecho": "desqualificado"}))
         self.assertTrue(app.outcome_stops_touches({"resposta_automatica": "sim", "desfecho": "call_marcada"}))
